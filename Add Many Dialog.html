@@ -17,6 +17,11 @@
   .row .nm { flex: 1; text-transform: uppercase; }
   .row input.qty { width: 70px; font-size: 15px; padding: 5px 6px; text-align: right; border: 1px solid #b0bec5; border-radius: 4px; }
   .row input.qty:focus { outline: 2px solid #6a1b9a; border-color: #6a1b9a; }
+  .row .hd { flex: none; cursor: grab; color: #90a4ae; font-size: 18px; padding: 0 2px; touch-action: none; user-select: none; }
+  .row .no { flex: none; width: 22px; text-align: right; color: #607d8b; font-size: 12px; }
+  .row .mv { flex: none; border: 1px solid #cfd8dc; background: #fff; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer; color: #37474f; }
+  .row .mv:disabled { opacity: 0.3; cursor: default; }
+  .row.drag { position: relative; z-index: 2; background: #f3e5f5; box-shadow: 0 3px 10px rgba(0,0,0,0.25); }
   .head { font-size: 12px; font-weight: bold; color: #fff; background: #1f4e5f; padding: 5px 8px; position: sticky; top: 0; z-index: 1; }
   .empty { padding: 16px; color: #889; text-align: center; }
   .foot { display: flex; align-items: center; gap: 10px; }
@@ -76,13 +81,25 @@
     return out;
   }
 
-  function rowHtml(n) {
+  function rowHtml(n, i, ord) {
     var on = picked.hasOwnProperty(n);
-    return '<div class="row' + (on ? ' on' : '') + '" data-n="' + esc(n) + '">' +
+    var last = order.length - 1;
+    return '<div class="row' + (on ? ' on' : '') + (ord ? ' ord' : '') + '" data-n="' + esc(n) + '">' +
+      (ord ? '<span class="hd" title="Drag to change the order">⠿</span><span class="no">' + (i + 1) + '</span>' : '') +
       '<input type="checkbox"' + (on ? ' checked' : '') + ' tabindex="-1">' +
       '<span class="nm">' + esc(n) + '</span>' +
       '<input class="qty" type="number" min="1" step="1" inputmode="numeric" value="' + (on ? picked[n] : '') + '">' +
+      (ord ? '<button class="mv" data-d="-1" tabindex="-1"' + (i === 0 ? ' disabled' : '') + ' title="Move up">↑</button>' +
+             '<button class="mv" data-d="1" tabindex="-1"' + (i === last ? ' disabled' : '') + ' title="Move down">↓</button>' : '') +
       '</div>';
+  }
+
+  function renumber() {
+    var rows = document.querySelectorAll('#list .row.ord');
+    for (var i = 0; i < rows.length; i++) {
+      var k = order.indexOf(rows[i].getAttribute('data-n'));
+      rows[i].querySelector('.no').textContent = k >= 0 ? k + 1 : '–';
+    }
   }
 
   function render() {
@@ -95,11 +112,16 @@
     var others = order.filter(function (n) { return !foundSet[n]; });
     if (q) {
       html += '<div class="head">' + (found.length ? found.length + (found.length >= 300 ? '+' : '') + ' match' + (found.length === 1 ? '' : 'es') + ' for “' + esc(q) + '”' : 'No product has “' + esc(q) + '”') + '</div>';
-      html += found.map(rowHtml).join('');
+      html += found.map(function (n) { return rowHtml(n); }).join('');
     }
     if (others.length) {
-      html += '<div class="head">Ticked (' + others.length + (q ? ' more' : '') + ')</div>';
-      html += others.map(rowHtml).join('');
+      if (q) {
+        html += '<div class="head">Ticked (' + others.length + ' more) — clear the search to change the order</div>';
+        html += others.map(function (n) { return rowHtml(n); }).join('');
+      } else {
+        html += '<div class="head">Ticked (' + others.length + ') — this is the order they go in. Drag ⠿ or use ↑ ↓</div>';
+        html += others.map(function (n, i) { return rowHtml(n, i, true); }).join('');
+      }
     }
     if (!html) html = '<div class="empty">Start typing a product name above.</div>';
     list.innerHTML = html;
@@ -149,10 +171,18 @@
     if (!e.target.classList.contains('qty')) return;
     var row = e.target.closest('.row');
     setQty(row.getAttribute('data-n'), e.target.value, row);
+    renumber();
   });
   listEl.addEventListener('click', function (e) {
     var row = e.target.closest('.row');
-    if (!row || e.target.classList.contains('qty')) return;
+    if (!row || e.target.classList.contains('qty') || e.target.classList.contains('hd')) return;
+    if (e.target.classList.contains('mv')) {
+      var nm = row.getAttribute('data-n'), k = order.indexOf(nm), to = k + Number(e.target.getAttribute('data-d'));
+      if (k < 0 || to < 0 || to >= order.length) return;
+      order.splice(k, 1); order.splice(to, 0, nm);
+      render();
+      return;
+    }
     var n = row.getAttribute('data-n');
     var box = row.querySelector('input.qty');
     if (picked.hasOwnProperty(n)) {  // untick
@@ -180,6 +210,42 @@
       var q = document.getElementById('q'); q.focus(); q.select();
     }
   });
+
+  // Drag ⠿ to reorder (listeners on document so moving the row in the DOM keeps the drag going)
+  var drag = null;
+  listEl.addEventListener('pointerdown', function (e) {
+    if (!e.target.classList.contains('hd') || busy) return;
+    e.preventDefault();
+    var row = e.target.closest('.row');
+    drag = { row: row, y0: e.clientY };
+    row.classList.add('drag');
+  });
+  document.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    e.preventDefault();
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#list .row.ord'));
+    var me = drag.row, i = rows.indexOf(me);
+    var prev = rows[i - 1], next = rows[i + 1];
+    if (prev && e.clientY < prev.getBoundingClientRect().top + prev.offsetHeight / 2) {
+      me.parentNode.insertBefore(me, prev);
+    } else if (next && e.clientY > next.getBoundingClientRect().top + next.offsetHeight / 2) {
+      me.parentNode.insertBefore(next, me);
+    }
+    var box = listEl.getBoundingClientRect();   // scroll near the edges
+    if (e.clientY < box.top + 30) listEl.scrollTop -= 10;
+    else if (e.clientY > box.bottom - 30) listEl.scrollTop += 10;
+  });
+  function endDrag() {
+    if (!drag) return;
+    drag = null;
+    var names = Array.prototype.slice.call(document.querySelectorAll('#list .row.ord'))
+      .map(function (r) { return r.getAttribute('data-n'); })
+      .filter(function (n) { return picked.hasOwnProperty(n); });
+    order = names.concat(order.filter(function (n) { return names.indexOf(n) < 0; }));
+    render();
+  }
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
 
   function submitAll() {
     if (busy || !order.length) return;
