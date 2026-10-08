@@ -628,6 +628,9 @@ function zeroOnlyDiff_(a, b) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Product Tools')
+    .addItem('Add many stickers…', 'openAddMany')
+    .addItem('Place ADD MANY button on Print Console', 'placeAddManyButton')
+    .addSeparator()
     .addItem('Update Product List (run import)', 'updateProductList2')
     .addSeparator()
     .addItem('Find Duplicates in Product List', 'executeFindDuplicates')

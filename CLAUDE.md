@@ -25,3 +25,8 @@ This repo is a copy of the **Sticker Printing** Apps Script project. The live co
 - The user is not a coder: explain in plain language.
 - Ask before any action that saves, renames or deletes real data in the sheet.
 - clasp login in a cloud session: `clasp login --no-localhost` reading stdin from a fifo; the login dies with the session.
+
+## ADD MANY (8 Oct 2026) — pushed to HEAD, not yet seen working
+- User: pick many products at once instead of B2 one by one. `Add Many.gs` + `Add Many Dialog.html`: window with a search box (all typed words must be in the name), every match listed with a Qty box; typing a qty ticks it; ticks kept across searches; shows stickers already in the list (C5) + new vs the 240 limit; Submit → `amInsertMany` puts each product in B2 + qty in C2 + D2 = 1, flush, runs `insert3(null, true, cachedProdList)` (same as INSERT), lists skipped ones.
+- Product names = B2's dropdown list (`amGetProducts`, same as `pullFromInventory`).
+- Opened from a purple ADD MANY image button on Print Console (column H, row 3, left of LOAD; `placeAddManyButton` puts it there once, alt title "ADD MANY", script `openAddMany`; base64 PNG in the file) and Product Tools → "Add many stickers…".

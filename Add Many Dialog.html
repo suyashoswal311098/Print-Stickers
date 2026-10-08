@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Calibri, Arial, sans-serif; margin: 0; color: #1f2d3d; font-size: 14px; }
+  .wrap { display: flex; flex-direction: column; height: 100vh; padding: 10px 12px; gap: 8px; }
+  #q { width: 100%; font-size: 16px; padding: 9px 10px; border: 2px solid #1f4e5f; border-radius: 6px; outline: none; }
+  #q:focus { border-color: #6a1b9a; }
+  .hint { font-size: 12px; color: #667; }
+  .list { flex: 1; overflow-y: auto; border: 1px solid #cfd8dc; border-radius: 6px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid #eef2f4; cursor: pointer; }
+  .row:hover { background: #f3f8fa; }
+  .row.on { background: #e8f5e9; }
+  .row input[type=checkbox] { width: 18px; height: 18px; flex: none; cursor: pointer; }
+  .row .nm { flex: 1; text-transform: uppercase; }
+  .row input.qty { width: 70px; font-size: 15px; padding: 5px 6px; text-align: right; border: 1px solid #b0bec5; border-radius: 4px; }
+  .row input.qty:focus { outline: 2px solid #6a1b9a; border-color: #6a1b9a; }
+  .head { font-size: 12px; font-weight: bold; color: #fff; background: #1f4e5f; padding: 5px 8px; position: sticky; top: 0; z-index: 1; }
+  .empty { padding: 16px; color: #889; text-align: center; }
+  .foot { display: flex; align-items: center; gap: 10px; }
+  .sum { flex: 1; font-size: 13px; }
+  .sum b { font-size: 15px; }
+  .over { color: #c62828; font-weight: bold; }
+  button { font-family: inherit; font-size: 15px; font-weight: bold; padding: 9px 16px; border-radius: 6px; border: none; cursor: pointer; }
+  #go { background: #6a1b9a; color: #fff; }
+  #go:disabled { background: #b39ddb; cursor: default; }
+  #cancel { background: #eceff1; color: #333; }
+  #msg { font-size: 13px; }
+  #msg.err { color: #c62828; font-weight: bold; }
+  #msg.ok { color: #2e7d32; font-weight: bold; }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid #b39ddb; border-top-color: #6a1b9a; border-radius: 50%; animation: sp 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <input id="q" placeholder="Type to search, e.g. bold badam" autocomplete="off" disabled>
+  <div class="hint">Type a qty and the product gets ticked. Search again to add more — ticks are kept. Enter jumps to the next qty box.</div>
+  <div class="list" id="list"><div class="empty"><span class="spin"></span>Loading products…</div></div>
+  <div id="msg"></div>
+  <div class="foot">
+    <div class="sum" id="sum"></div>
+    <button id="cancel" onclick="google.script.host.close()">Cancel</button>
+    <button id="go" onclick="submitAll()" disabled>Submit</button>
+  </div>
+</div>
+<script>
+  var names = [], used = 0, limit = 240;
+  var picked = {};   // name -> qty (only ticked ones)
+  var order = [];    // names in the order they were ticked
+  var busy = false;
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  google.script.run
+    .withSuccessHandler(function (r) {
+      names = r.names || []; used = r.used || 0; limit = r.limit || 240;
+      var q = document.getElementById('q');
+      q.disabled = false; q.focus();
+      render();
+    })
+    .withFailureHandler(function (e) { showMsg('Could not load products: ' + e.message, 'err'); })
+    .amGetProducts();
+
+  function matches(q) {
+    var words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    var out = [];
+    for (var i = 0; i < names.length && out.length < 300; i++) {
+      var n = names[i].toLowerCase(), ok = true;
+      for (var w = 0; w < words.length; w++) if (n.indexOf(words[w]) < 0) { ok = false; break; }
+      if (ok) out.push(names[i]);
+    }
+    return out;
+  }
+
+  function rowHtml(n) {
+    var on = picked.hasOwnProperty(n);
+    return '<div class="row' + (on ? ' on' : '') + '" data-n="' + esc(n) + '">' +
+      '<input type="checkbox"' + (on ? ' checked' : '') + ' tabindex="-1">' +
+      '<span class="nm">' + esc(n) + '</span>' +
+      '<input class="qty" type="number" min="1" step="1" inputmode="numeric" value="' + (on ? picked[n] : '') + '">' +
+      '</div>';
+  }
+
+  function render() {
+    var q = document.getElementById('q').value.trim();
+    var list = document.getElementById('list');
+    var html = '';
+    var found = matches(q);
+    var foundSet = {};
+    found.forEach(function (n) { foundSet[n] = 1; });
+    var others = order.filter(function (n) { return !foundSet[n]; });
+    if (q) {
+      html += '<div class="head">' + (found.length ? found.length + (found.length >= 300 ? '+' : '') + ' match' + (found.length === 1 ? '' : 'es') + ' for “' + esc(q) + '”' : 'No product has “' + esc(q) + '”') + '</div>';
+      html += found.map(rowHtml).join('');
+    }
+    if (others.length) {
+      html += '<div class="head">Ticked (' + others.length + (q ? ' more' : '') + ')</div>';
+      html += others.map(rowHtml).join('');
+    }
+    if (!html) html = '<div class="empty">Start typing a product name above.</div>';
+    list.innerHTML = html;
+    updateSum();
+  }
+
+  function setQty(n, v, row) {
+    var qty = parseInt(v, 10);
+    if (qty > 0) {
+      if (!picked.hasOwnProperty(n)) order.push(n);
+      picked[n] = qty;
+    } else if (picked.hasOwnProperty(n)) {
+      delete picked[n];
+      order = order.filter(function (x) { return x !== n; });
+    }
+    if (row) {
+      var on = picked.hasOwnProperty(n);
+      row.classList.toggle('on', on);
+      row.querySelector('input[type=checkbox]').checked = on;
+    }
+    updateSum();
+  }
+
+  function updateSum() {
+    var total = 0;
+    order.forEach(function (n) { total += picked[n]; });
+    var after = used + total;
+    var s = '<b>' + order.length + '</b> product' + (order.length === 1 ? '' : 's') + ' · <b>' + total + '</b> stickers';
+    s += '<br><span class="' + (after > limit ? 'over' : '') + '">Already in list ' + used + ' → after: ' + after + ' / ' + limit + (after > limit ? ' — over the limit' : '') + '</span>';
+    document.getElementById('sum').innerHTML = s;
+    document.getElementById('go').disabled = busy || !order.length || after > limit;
+    document.getElementById('go').textContent = order.length ? 'Submit (' + order.length + ')' : 'Submit';
+  }
+
+  function showMsg(t, cls) { var m = document.getElementById('msg'); m.className = cls || ''; m.innerHTML = t; }
+
+  document.getElementById('q').addEventListener('input', render);
+  document.getElementById('q').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      var first = document.querySelector('#list input.qty');
+      if (first) { e.preventDefault(); first.focus(); first.select(); }
+    }
+  });
+
+  var listEl = document.getElementById('list');
+  listEl.addEventListener('input', function (e) {
+    if (!e.target.classList.contains('qty')) return;
+    var row = e.target.closest('.row');
+    setQty(row.getAttribute('data-n'), e.target.value, row);
+  });
+  listEl.addEventListener('click', function (e) {
+    var row = e.target.closest('.row');
+    if (!row || e.target.classList.contains('qty')) return;
+    var n = row.getAttribute('data-n');
+    var box = row.querySelector('input.qty');
+    if (picked.hasOwnProperty(n)) {  // untick
+      box.value = '';
+      setQty(n, '', row);
+    } else {                          // tick → type the qty
+      if (e.target.type === 'checkbox') e.target.checked = false;
+      box.focus(); box.select();
+    }
+  });
+  listEl.addEventListener('keydown', function (e) {
+    if (!e.target.classList.contains('qty')) return;
+    var boxes = Array.prototype.slice.call(document.querySelectorAll('#list input.qty'));
+    var i = boxes.indexOf(e.target);
+    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (boxes[i + 1]) { boxes[i + 1].focus(); boxes[i + 1].select(); }
+      else document.getElementById('q').focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (boxes[i - 1]) { boxes[i - 1].focus(); boxes[i - 1].select(); }
+      else document.getElementById('q').focus();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      var q = document.getElementById('q'); q.focus(); q.select();
+    }
+  });
+
+  function submitAll() {
+    if (busy || !order.length) return;
+    var items = order.map(function (n) { return { name: n, qty: picked[n] }; });
+    busy = true; updateSum();
+    document.getElementById('q').disabled = true;
+    showMsg('<span class="spin"></span>Inserting ' + items.length + ' product' + (items.length === 1 ? '' : 's') + '… (about 1 second each — keep this window open)');
+    google.script.run
+      .withSuccessHandler(function (r) {
+        busy = false;
+        if (r.error) { document.getElementById('q').disabled = false; updateSum(); showMsg(r.error, 'err'); return; }
+        if (r.skipped && r.skipped.length) {
+          showMsg('Inserted ' + r.inserted + '. Skipped ' + r.skipped.length + ':<br>' + r.skipped.map(esc).join('<br>'), 'err');
+          picked = {}; order = []; used = 0;
+          document.getElementById('go').style.display = 'none';
+          document.getElementById('cancel').textContent = 'Close';
+          render();
+        } else {
+          showMsg('✅ Inserted ' + r.inserted + ' product' + (r.inserted === 1 ? '' : 's') + '.', 'ok');
+          setTimeout(function () { google.script.host.close(); }, 1200);
+        }
+      })
+      .withFailureHandler(function (e) {
+        busy = false; document.getElementById('q').disabled = false; updateSum();
+        showMsg('Stopped with an error: ' + esc(e.message) + '<br>Check the sticker list — some products may already be inserted.', 'err');
+      })
+      .amInsertMany(items);
+  }
+</script>
+</body>
+</html>
