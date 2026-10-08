@@ -49,7 +49,7 @@
 <body>
 <div class="wrap">
   <div class="top">
-    <input id="q" placeholder="Type to search, e.g. bold badam" autocomplete="off" disabled>
+    <input id="q" placeholder="Type to search, e.g. bold badam" autocomplete="off" autofocus>
     <button id="ordBtn" onclick="showOrder()" disabled title="See all ticked products and change their order">↕ Order</button>
   </div>
   <div class="hint">Tick a product (qty 1) or type a qty. Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
@@ -62,7 +62,10 @@
   </div>
 </div>
 <script>
-  var names = [], used = 0, limit = 240;
+  var names = [], used = 0, limit = 240, loaded = false;
+  // Cursor in the search box straight away (you can type while products load)
+  function focusQ() { var q = document.getElementById('q'); if (document.activeElement !== q && !busy) q.focus(); }
+  focusQ(); window.addEventListener('load', focusQ); setTimeout(focusQ, 150); setTimeout(focusQ, 500);
   var picked = {};   // name -> qty (only ticked ones)
   var order = [];    // names in the order they were ticked
   var busy = false;
@@ -73,7 +76,7 @@
     .withSuccessHandler(function (r) {
       names = r.names || []; used = r.used || 0; limit = r.limit || 240;
       var q = document.getElementById('q');
-      q.disabled = false; q.focus();
+      loaded = true; focusQ();
       render();
     })
     .withFailureHandler(function (e) { showMsg('Could not load products: ' + e.message, 'err'); })
@@ -133,6 +136,7 @@
         html += others.map(function (n, i) { return rowHtml(n, i, true); }).join('');
       }
     }
+    if (!loaded) html = '<div class="empty"><span class="spin"></span>Loading products…</div>';
     if (!html) html = '<div class="empty">Start typing a product name above.</div>';
     list.innerHTML = html;
     updateSum();
