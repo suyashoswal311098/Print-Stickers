@@ -48,7 +48,7 @@
     <input id="q" placeholder="Type to search, e.g. bold badam" autocomplete="off" disabled>
     <button id="ordBtn" onclick="showOrder()" disabled title="See all ticked products and change their order">↕ Order</button>
   </div>
-  <div class="hint">Type a qty and the product gets ticked. Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
+  <div class="hint">Tick a product (qty 1) or type a qty. Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
   <div class="list" id="list"><div class="empty"><span class="spin"></span>Loading products…</div></div>
   <div id="msg"></div>
   <div class="foot">
@@ -203,8 +203,10 @@
     if (picked.hasOwnProperty(n)) {  // untick
       box.value = '';
       setQty(n, '', row);
-    } else {                          // tick → type the qty
-      if (e.target.type === 'checkbox') e.target.checked = false;
+    } else {                          // tick → qty 1 (selected, so typing replaces it)
+      box.value = '1';
+      setQty(n, '1', row);
+      renumber();
       box.focus(); box.select();
     }
   });
