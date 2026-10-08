@@ -132,10 +132,15 @@ function ownBarcodeRefreshDialog_(ss, stkr) {
   const url = ss.getUrl() + '?gid=' + gid + '&r=' + Date.now() + '#gid=' + gid;
   const html = HtmlService.createHtmlOutput(
     '<div style="font-family:Arial,sans-serif;font-size:14px;text-align:center;padding:6px">' +
-    '<p style="margin:4px 0 14px">✅ Stickers loaded.<br>Refresh once to see the barcodes.</p>' +
+    '<p style="margin:4px 0 14px">✅ Stickers loaded.<br>Refreshing to show the barcodes…</p>' +
     '<a href="' + url + '" target="_top" style="display:inline-block;background:#1f4e5f;color:#fff;' +
     'padding:10px 22px;border-radius:6px;font-weight:bold;text-decoration:none">🔄 Refresh now</a>' +
-    '<p style="margin:12px 0 0;font-size:11px;color:#888">or press F5</p></div>'
+    '<p id="m" style="margin:12px 0 0;font-size:11px;color:#888">Refreshing…</p></div>' +
+    // Refresh by itself; if the browser blocks that, the button is there to click
+    '<script>var u=' + JSON.stringify(url) + ';' +
+    'setTimeout(function(){try{window.top.location.replace(u);}catch(e){}' +
+    'setTimeout(function(){document.getElementById("m").textContent="Click the button (or press F5)";},1500);},300);' +
+    '</script>'
   ).setWidth(300).setHeight(170);
   SpreadsheetApp.getUi().showModalDialog(html, 'Stickers ready');
 }
