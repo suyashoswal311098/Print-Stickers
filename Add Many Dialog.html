@@ -31,6 +31,8 @@
   .empty { padding: 16px; color: #889; text-align: center; }
   .foot { display: flex; align-items: center; gap: 10px; }
   .sum { flex: 1; font-size: 13px; }
+  .keep { display: block; margin-top: 4px; font-size: 12px; color: #455a64; cursor: pointer; }
+  .keep input { vertical-align: -2px; margin: 0 4px 0 0; }
   .sum b { font-size: 15px; }
   .over { color: #c62828; font-weight: bold; }
   button { font-family: inherit; font-size: 15px; font-weight: bold; padding: 9px 16px; border-radius: 6px; border: none; cursor: pointer; }
@@ -54,7 +56,7 @@
   <div class="list" id="list"><div class="empty"><span class="spin"></span>Loading products…</div></div>
   <div id="msg"></div>
   <div class="foot">
-    <div class="sum" id="sum"></div>
+    <div class="sum"><div id="sum"></div><label class="keep"><input type="checkbox" id="saveOrd" checked> Save this order in Product List</label></div>
     <button id="cancel" onclick="google.script.host.close()">Cancel</button>
     <button id="go" onclick="submitAll()" disabled>Submit</button>
   </div>
@@ -321,8 +323,30 @@
   document.addEventListener('pointerup', endDrag);
   document.addEventListener('pointercancel', endDrag);
 
+  try { if (localStorage.getItem('am_saveOrd') === '0') document.getElementById('saveOrd').checked = false; } catch (e) {}
+  document.getElementById('saveOrd').addEventListener('change', function () {
+    try { localStorage.setItem('am_saveOrd', this.checked ? '1' : '0'); } catch (e) {}
+  });
+
+  // After inserting: move the rows in Product List into this order (if ticked), then show the result
+  function afterInsert(names, text, cls, close) {
+    var done = function (extra) {
+      showMsg(text + extra, cls);
+      if (close) setTimeout(function () { google.script.host.close(); }, 1500);
+    };
+    if (!document.getElementById('saveOrd').checked || names.length < 2) { done(''); return; }
+    showMsg(text + '<br><span class="spin"></span>Saving the order in Product List…', cls);
+    google.script.run
+      .withSuccessHandler(function (o) {
+        done(o.error ? '<br>⚠ ' + esc(o.error) : '<br>Order saved in Product List' + (o.moved ? ' (rows ' + o.from + '–' + o.to + ')' : ' (already in this order)') + '.');
+      })
+      .withFailureHandler(function (e) { done('<br>⚠ Order not saved in Product List: ' + esc(e.message)); })
+      .amSaveOrder(names);
+  }
+
   function submitAll() {
     if (busy || !order.length) return;
+    var names = order.slice();
     var items = order.map(function (n) { return { name: n, qty: picked[n] }; });
     busy = true; updateSum();
     document.getElementById('q').disabled = true;
@@ -332,14 +356,13 @@
         busy = false;
         if (r.error) { document.getElementById('q').disabled = false; updateSum(); showMsg(r.error, 'err'); return; }
         if (r.skipped && r.skipped.length) {
-          showMsg('Inserted ' + r.inserted + '. Skipped ' + r.skipped.length + ':<br>' + r.skipped.map(esc).join('<br>'), 'err');
+          afterInsert(names, 'Inserted ' + r.inserted + '. Skipped ' + r.skipped.length + ':<br>' + r.skipped.map(esc).join('<br>'), 'err', false);
           picked = {}; order = []; used = 0;
           document.getElementById('go').style.display = 'none';
           document.getElementById('cancel').textContent = 'Close';
           render();
         } else {
-          showMsg('✅ Inserted ' + r.inserted + ' product' + (r.inserted === 1 ? '' : 's') + (r.fast ? ' ⚡' : ' (slow way)') + '.', 'ok');
-          setTimeout(function () { google.script.host.close(); }, 1200);
+          afterInsert(names, '✅ Inserted ' + r.inserted + ' product' + (r.inserted === 1 ? '' : 's') + (r.fast ? ' ⚡' : ' (slow way)') + '.', 'ok', true);
         }
       })
       .withFailureHandler(function (e) {
