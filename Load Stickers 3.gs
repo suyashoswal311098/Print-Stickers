@@ -151,6 +151,12 @@ for (var rw = 8; rw <= rwt; rw++) {
   addLogEntry(log, rl++, rowDetails);
 }
 
+// Barcode pictures inside cells only show after the page is refreshed → offer a one-click refresh
+if (stickerDetails.bc && stickerDetails.bc.cache && Object.keys(stickerDetails.bc.cache).length) {
+  SpreadsheetApp.flush();
+  ownBarcodeRefreshDialog_(ss, stkr);
+}
+
   }
 
 function getRowDetails(sheet, row) {
