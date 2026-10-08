@@ -24,7 +24,9 @@
   .row .no { flex: none; width: 22px; text-align: right; color: #607d8b; font-size: 12px; }
   .row .mv { flex: none; border: 1px solid #cfd8dc; background: #fff; border-radius: 4px; padding: 2px 6px; font-size: 12px; cursor: pointer; color: #37474f; }
   .row .mv:disabled { opacity: 0.3; cursor: default; }
-  .row.drag { position: relative; z-index: 2; background: #f3e5f5; box-shadow: 0 3px 10px rgba(0,0,0,0.25); }
+  .row.ord { position: relative; background-clip: padding-box; }
+  .row.drag { z-index: 5; background: #f3e5f5; box-shadow: 0 8px 20px rgba(0,0,0,0.25); border-radius: 6px; cursor: grabbing; }
+  .row.ord:not(.drag) { background-color: #e8f5e9; }
   .head { font-size: 12px; font-weight: bold; color: #fff; background: #1f4e5f; padding: 5px 8px; position: sticky; top: 0; z-index: 1; }
   .empty { padding: 16px; color: #889; text-align: center; }
   .foot { display: flex; align-items: center; gap: 10px; }
@@ -125,7 +127,7 @@
         html += '<div class="head">Ticked (' + others.length + ' more) — clear the search to change the order</div>';
         html += others.map(function (n) { return rowHtml(n); }).join('');
       } else {
-        html += '<div class="head">Ticked (' + others.length + ') — this is the order they go in. Drag ⠿ or use ↑ ↓</div>';
+        html += '<div class="head">Ticked (' + others.length + ') — this is the order they go in. Drag a row (or ⠿) or use ↑ ↓</div>';
         html += others.map(function (n, i) { return rowHtml(n, i, true); }).join('');
       }
     }
@@ -190,7 +192,7 @@
   });
   listEl.addEventListener('click', function (e) {
     var row = e.target.closest('.row');
-    if (!row || e.target.classList.contains('qty') || e.target.classList.contains('hd')) return;
+    if (noClick || !row || e.target.classList.contains('qty') || e.target.classList.contains('hd')) return;
     if (e.target.classList.contains('mv')) {
       var nm = row.getAttribute('data-n'), k = order.indexOf(nm), to = k + Number(e.target.getAttribute('data-d'));
       if (k < 0 || to < 0 || to >= order.length) return;
@@ -228,38 +230,93 @@
     }
   });
 
-  // Drag ⠿ to reorder (listeners on document so moving the row in the DOM keeps the drag going)
-  var drag = null;
+  // Smooth drag to reorder (like a phone list): the row follows the pointer, the others slide aside.
+  // Mouse: press anywhere on a row (not on qty / buttons) and move. Touch: use the ⠿ handle.
+  var drag = null, pend = null, noClick = false;
   listEl.addEventListener('pointerdown', function (e) {
-    if (!e.target.classList.contains('hd') || busy) return;
-    e.preventDefault();
-    var row = e.target.closest('.row');
-    drag = { row: row, y0: e.clientY };
-    row.classList.add('drag');
+    var row = e.target.closest('.row.ord');
+    if (!row || busy) return;
+    var t = e.target;
+    if (t.classList.contains('qty') || t.classList.contains('mv')) return;
+    var onHandle = t.classList.contains('hd');
+    if (!onHandle && e.pointerType !== 'mouse') return;
+    if (onHandle) e.preventDefault();
+    pend = { row: row, y0: e.clientY, now: onHandle };
+    if (onHandle) beginDrag(e);
   });
+  function beginDrag(e) {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#list .row.ord'));
+    var me = pend.row, idx = rows.indexOf(me);
+    drag = {
+      row: me, rows: rows, idx: idx, to: idx, y0: pend.y0, s0: listEl.scrollTop,
+      h: me.offsetHeight, mids: rows.map(function (r) { return r.offsetTop + r.offsetHeight / 2; })
+    };
+    pend = null;
+    rows.forEach(function (r) { if (r !== me) r.style.transition = 'transform 0.18s ease'; });
+    me.classList.add('drag');
+    document.body.style.userSelect = 'none';
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    tickScroll();
+  }
+  function layout(clientY) {
+    if (!drag) return;
+    drag.lastY = clientY;
+    var dy = clientY - drag.y0 + (listEl.scrollTop - drag.s0);
+    var rows = drag.rows, idx = drag.idx;
+    var lo = drag.mids[0] - drag.mids[idx], hi = drag.mids[rows.length - 1] - drag.mids[idx];
+    dy = Math.max(lo - drag.h / 2, Math.min(hi + drag.h / 2, dy));
+    drag.row.style.transform = 'translateY(' + dy + 'px) scale(1.02)';
+    var c = drag.mids[idx] + dy, to = idx;
+    for (var j = 0; j < rows.length; j++) {
+      if (j === idx) continue;
+      var shift = 0;
+      if (j > idx && c > drag.mids[j]) { shift = -drag.h; to = Math.max(to, j); }
+      else if (j < idx && c < drag.mids[j]) { shift = drag.h; to = Math.min(to, j); }
+      rows[j].style.transform = shift ? 'translateY(' + shift + 'px)' : '';
+    }
+    drag.to = to;
+  }
+  function tickScroll() {
+    if (!drag) return;
+    var y = drag.lastY, box = listEl.getBoundingClientRect();
+    if (y != null) {
+      var v = y < box.top + 40 ? -Math.ceil((box.top + 40 - y) / 4) : y > box.bottom - 40 ? Math.ceil((y - box.bottom + 40) / 4) : 0;
+      if (v) { listEl.scrollTop += v; layout(y); }
+    }
+    requestAnimationFrame(tickScroll);
+  }
   document.addEventListener('pointermove', function (e) {
+    if (pend && !drag) {
+      if (Math.abs(e.clientY - pend.y0) < 5) return;
+      beginDrag(e);
+    }
     if (!drag) return;
     e.preventDefault();
-    var rows = Array.prototype.slice.call(document.querySelectorAll('#list .row.ord'));
-    var me = drag.row, i = rows.indexOf(me);
-    var prev = rows[i - 1], next = rows[i + 1];
-    if (prev && e.clientY < prev.getBoundingClientRect().top + prev.offsetHeight / 2) {
-      me.parentNode.insertBefore(me, prev);
-    } else if (next && e.clientY > next.getBoundingClientRect().top + next.offsetHeight / 2) {
-      me.parentNode.insertBefore(next, me);
-    }
-    var box = listEl.getBoundingClientRect();   // scroll near the edges
-    if (e.clientY < box.top + 30) listEl.scrollTop -= 10;
-    else if (e.clientY > box.bottom - 30) listEl.scrollTop += 10;
+    layout(e.clientY);
   });
   function endDrag() {
+    pend = null;
     if (!drag) return;
-    drag = null;
-    var names = Array.prototype.slice.call(document.querySelectorAll('#list .row.ord'))
-      .map(function (r) { return r.getAttribute('data-n'); })
-      .filter(function (n) { return picked.hasOwnProperty(n); });
-    order = names.concat(order.filter(function (n) { return names.indexOf(n) < 0; }));
-    render();
+    var d = drag; drag = null;
+    noClick = true; setTimeout(function () { noClick = false; }, 50);
+    document.body.style.userSelect = '';
+    // glide into the new slot, then redraw
+    var slot = d.mids[d.to] - d.mids[d.idx];
+    if (d.to > d.idx) slot = d.rows[d.to].offsetTop + d.rows[d.to].offsetHeight - d.h - d.row.offsetTop;
+    else if (d.to < d.idx) slot = d.rows[d.to].offsetTop - d.row.offsetTop;
+    else slot = 0;
+    d.row.style.transition = 'transform 0.15s ease';
+    d.row.style.transform = 'translateY(' + slot + 'px)';
+    var names = d.rows.map(function (r) { return r.getAttribute('data-n'); });
+    var nm = names.splice(d.idx, 1)[0];
+    names.splice(d.to, 0, nm);
+    names = names.filter(function (n) { return picked.hasOwnProperty(n); });
+    setTimeout(function () {
+      order = names.concat(order.filter(function (n) { return names.indexOf(n) < 0; }));
+      var top = listEl.scrollTop;
+      render();
+      listEl.scrollTop = top;
+    }, 160);
   }
   document.addEventListener('pointerup', endDrag);
   document.addEventListener('pointercancel', endDrag);
