@@ -16,7 +16,7 @@ function amProductIndex_(list) {
   const byName = {}, byBar = {};
   pl.forEach((r, i) => {
     const k = normName_(r[2]), bk = normBar_(r[1]);
-    const v = { bar: r[1], colour: r[7], name: k, row: i + 2 };
+    const v = { bar: r[1], colour: r[7], shelf: Number(r[6]) || 0, name: k, row: i + 2 };
     if (k && !byName[k]) byName[k] = v;
     if (bk && !byBar[bk]) byBar[bk] = v;
   });
@@ -66,16 +66,23 @@ function amGetProducts() {
   return { names: names, used: Number(work.getRange('C5').getValue()) || 0, limit: 240 };
 }
 
-// items = [{name, qty}] → inserts each like the INSERT button. Returns a summary.
+// items = [{name, qty, pack}], opts = {pkd: 'yyyy-mm-dd'} → inserts each like the INSERT button.
+// PKD = the date picked in the window (default today); EXP = PKD + the product's Shelf Life
+// (Product List column G) when it is above 0. Pack = packing size (default 1). Returns a summary.
 // FAST: barcode + colour are looked up in Product List (by name, or by "<barcode> <name>") and all
 // rows are written in one go. Safety check first: the first product is put in B2 and the sheet's own
 // A2 (barcode) / H2 (colour) formulas must give the same answer; if not, the slow per-item way is used.
-function amInsertMany(items) {
+function amInsertMany(items, opts) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const work = ss.getSheetByName('Print Console');
   const list = ss.getSheetByName('Product List');
   items = (items || []).filter(it => it && String(it.name).trim() && Number(it.qty) > 0);
   if (!items.length) return { inserted: 0, skipped: [] };
+  items.forEach(it => { it.qty = Number(it.qty); it.pack = Number(it.pack) > 0 ? Number(it.pack) : 1; });
+  let pkd = null;
+  const m = String((opts && opts.pkd) || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) pkd = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const expOf = shelf => (pkd && shelf > 0) ? new Date(pkd.getTime() + shelf * 86400000) : '';
 
   const used = Number(work.getRange('C5').getValue()) || 0;
   const total = items.reduce((s, it) => s + Number(it.qty), 0);
@@ -92,8 +99,8 @@ function amInsertMany(items) {
     const lookup = amProductIndex_(list);
     items.forEach(it => {
       const p = lookup(it.name);
-      if (p && p.bar !== '' && p.bar !== null) plan.push({ name: it.name, qty: Number(it.qty), bar: p.bar, colour: p.colour });
-      else notFound.push({ name: it.name, qty: Number(it.qty) }); // left to the slow way below
+      if (p && p.bar !== '' && p.bar !== null) plan.push({ name: it.name, qty: it.qty, pack: it.pack, bar: p.bar, colour: p.colour, shelf: p.shelf });
+      else notFound.push({ name: it.name, qty: it.qty, pack: it.pack, shelf: 0 }); // left to the slow way below
     });
 
     if (plan.length) {
@@ -108,13 +115,14 @@ function amInsertMany(items) {
     }
 
     if (fastOk) {
-      // Same row as insert3 builds: A barcode, C qty, D packing 1, J colour (value + background), rest blank
+      // Same row as insert3 builds: A barcode, C qty, D packing, E PKD, F EXP, J colour (value + background), rest blank
       const row = Math.max(work.getLastRow() + 1, 8);
-      const vals = plan.map(p => [p.bar, '', p.qty, 1, '', '', '', '', '', p.colour]);
+      const vals = plan.map(p => [p.bar, '', p.qty, p.pack, pkd || '', expOf(p.shelf), '', '', '', p.colour]);
       const bgs = plan.map(p => ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', p.colour || '#ffffff']);
       const rng = work.getRange(row, 1, plan.length, 10);
       rng.setValues(vals);
       rng.setBackgrounds(bgs);
+      if (pkd) work.getRange(row, 5, plan.length, 2).setNumberFormat('DD/MM/YYYY');
     }
   } finally {
     lock.releaseLock();
@@ -125,8 +133,10 @@ function amInsertMany(items) {
   if (slow.length) {
     // Slow, sure way: exactly what the INSERT button does, one by one
     const cachedProdList = list.getRange(2, 2, Math.max(list.getLastRow() - 1, 1), 9).getValues();
+    const e2 = work.getRange('E2'), keepE2 = e2.getFormula() || e2.getValue();
     slow.forEach(it => {
-      work.getRange('B2:D2').setValues([[String(it.name).trim(), it.qty, 1]]);
+      // D2 pack, E2 PKD, F2 shelf life → insert3 writes PKD / EXP (only when shelf life > 0, as INSERT does)
+      work.getRange('B2:F2').setValues([[String(it.name).trim(), it.qty, it.pack, pkd || keepE2, it.shelf > 0 ? it.shelf : '']]);
       SpreadsheetApp.flush(); // let A2 / H2 formulas follow B2
       let status;
       try {
@@ -139,6 +149,7 @@ function amInsertMany(items) {
     });
     work.getRange('B2:C2').clearContent();
     work.getRange('D2').setValue(1);
+    if (String(keepE2).charAt(0) === '=') e2.setFormula(keepE2); else e2.setValue(keepE2);
   }
 
   work.getRange('B2').activate();

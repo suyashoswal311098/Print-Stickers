@@ -18,6 +18,11 @@
   .row.on { background: #e8f5e9; }
   .row input[type=checkbox] { width: 18px; height: 18px; flex: none; cursor: pointer; }
   .row .nm { flex: 1; text-transform: uppercase; }
+  .row .pl { flex: none; font-size: 11px; color: #90a4ae; margin-right: -4px; }
+  .row input.pk { width: 58px; font-size: 13px; padding: 5px 4px; text-align: right; border: 1px solid #cfd8dc; border-radius: 4px; color: #455a64; }
+  .row input.pk:focus { outline: 2px solid #6a1b9a; }
+  .pkd { flex: none; display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: bold; color: #1f4e5f; }
+  .pkd input { font-size: 14px; padding: 6px; border: 2px solid #1f4e5f; border-radius: 6px; }
   .row input.qty { width: 70px; font-size: 15px; padding: 5px 6px; text-align: right; border: 1px solid #b0bec5; border-radius: 4px; }
   .row input.qty:focus { outline: 2px solid #6a1b9a; border-color: #6a1b9a; }
   .row .hd { flex: none; cursor: grab; color: #90a4ae; font-size: 18px; padding: 0 2px; touch-action: none; user-select: none; }
@@ -49,10 +54,11 @@
 <body>
 <div class="wrap">
   <div class="top">
+    <label class="pkd">PKD <input type="date" id="pkd"></label>
     <input id="q" placeholder="Type to search, e.g. bold badam" autocomplete="off" autofocus>
     <button id="ordBtn" onclick="showOrder()" disabled title="See all ticked products and change their order">↕ Order</button>
   </div>
-  <div class="hint">Tick a product (qty 1) or type a qty. Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
+  <div class="hint">Tick a product (qty 1) or type a qty. Small box = packing size (default 1). Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
   <div class="list" id="list"><div class="empty"><span class="spin"></span>Loading products…</div></div>
   <div id="msg"></div>
   <div class="foot">
@@ -63,10 +69,13 @@
 </div>
 <script>
   var names = [], used = 0, limit = 240, loaded = false;
+  (function () { var d = new Date(), p = function (x) { return (x < 10 ? '0' : '') + x; };
+    document.getElementById('pkd').value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); })();
   // Cursor in the search box straight away (you can type while products load)
   function focusQ() { var q = document.getElementById('q'); if (document.activeElement !== q && !busy) q.focus(); }
   focusQ(); window.addEventListener('load', focusQ); setTimeout(focusQ, 150); setTimeout(focusQ, 500);
   var picked = {};   // name -> qty (only ticked ones)
+  var packs = {};    // name -> packing size (default 1)
   var order = [];    // names in the order they were ticked
   var busy = false;
 
@@ -101,7 +110,8 @@
       (ord ? '<span class="hd" title="Drag to change the order">⠿</span><span class="no">' + (i + 1) + '</span>' : '') +
       '<input type="checkbox"' + (on ? ' checked' : '') + ' tabindex="-1">' +
       '<span class="nm">' + esc(n) + '</span>' +
-      '<input class="qty" type="number" min="1" step="1" inputmode="numeric" value="' + (on ? picked[n] : '') + '">' +
+      '<span class="pl">Pack</span><input class="pk" type="number" min="0" step="0.25" inputmode="decimal" title="Packing size" value="' + (packs[n] || 1) + '">' +
+      '<span class="pl">Qty</span><input class="qty" type="number" min="1" step="1" inputmode="numeric" title="Sticker qty" value="' + (on ? picked[n] : '') + '">' +
       (ord ? '<button class="mv" data-d="-1" tabindex="-1"' + (i === 0 ? ' disabled' : '') + ' title="Move up">↑</button>' +
              '<button class="mv" data-d="1" tabindex="-1"' + (i === last ? ' disabled' : '') + ' title="Move down">↓</button>' : '') +
       '</div>';
@@ -191,6 +201,11 @@
 
   var listEl = document.getElementById('list');
   listEl.addEventListener('input', function (e) {
+    if (e.target.classList.contains('pk')) {
+      var pv = parseFloat(e.target.value);
+      packs[e.target.closest('.row').getAttribute('data-n')] = pv > 0 ? pv : 1;
+      return;
+    }
     if (!e.target.classList.contains('qty')) return;
     var row = e.target.closest('.row');
     setQty(row.getAttribute('data-n'), e.target.value, row);
@@ -198,7 +213,7 @@
   });
   listEl.addEventListener('click', function (e) {
     var row = e.target.closest('.row');
-    if (noClick || !row || e.target.classList.contains('qty') || e.target.classList.contains('hd')) return;
+    if (noClick || !row || e.target.classList.contains('qty') || e.target.classList.contains('pk') || e.target.classList.contains('hd')) return;
     if (e.target.classList.contains('mv')) {
       var nm = row.getAttribute('data-n'), k = order.indexOf(nm), to = k + Number(e.target.getAttribute('data-d'));
       if (k < 0 || to < 0 || to >= order.length) return;
@@ -243,7 +258,7 @@
     var row = e.target.closest('.row.ord');
     if (!row || busy) return;
     var t = e.target;
-    if (t.classList.contains('qty') || t.classList.contains('mv')) return;
+    if (t.classList.contains('qty') || t.classList.contains('pk') || t.classList.contains('mv')) return;
     var onHandle = t.classList.contains('hd');
     if (!onHandle && e.pointerType !== 'mouse') return;
     if (onHandle) e.preventDefault();
@@ -351,7 +366,8 @@
   function submitAll() {
     if (busy || !order.length) return;
     var names = order.slice();
-    var items = order.map(function (n) { return { name: n, qty: picked[n] }; });
+    var items = order.map(function (n) { return { name: n, qty: picked[n], pack: packs[n] || 1 }; });
+    var pkdVal = document.getElementById('pkd').value;
     busy = true; updateSum();
     document.getElementById('q').disabled = true;
     showMsg('<span class="spin"></span>Inserting ' + items.length + ' product' + (items.length === 1 ? '' : 's') + '… keep this window open');
@@ -373,7 +389,7 @@
         busy = false; document.getElementById('q').disabled = false; updateSum();
         showMsg('Stopped with an error: ' + esc(e.message) + '<br>Check the sticker list — some products may already be inserted.', 'err');
       })
-      .amInsertMany(items);
+      .amInsertMany(items, { pkd: pkdVal });
   }
 </script>
 </body>
