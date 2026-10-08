@@ -81,8 +81,9 @@ function ownBarcodeSetup_(rstk, stkr) {
     return s;
   });
   let h = 0;
-  for (let k = 0; k < rows; k++) h += stkr.getRowHeight(r + k);
-  return { r: r, c: c, w: w, h: h };
+  const hs = [];
+  for (let k = 0; k < rows; k++) { hs.push(stkr.getRowHeight(r + k)); h += hs[k]; }
+  return { r: r, c: c, w: w, h: h, hs: hs };
 }
 
 // Writes the barcode for one sticker. top = sticker's first row, colOffset = 0 / 6 / 12, stc = 1..3.
@@ -90,7 +91,10 @@ function ownBarcodePut_(sheet, bc, top, colOffset, stc, code) {
   const enc = code128Text_(code);
   if (!enc) return;
   const em = code128WidthEm_(enc);
-  const px = Math.min(bc.w[stc - 1] * 0.92 / em, bc.h * 0.98);   // fit the width, and the height
+  // The font's bars are 0.59 em tall from the baseline; below them is 0.4 em of empty "descender" space.
+  // Fill the width (94%) and let the bars reach the full height: if the text box is taller than the cell,
+  // align it to the TOP so only the empty space below the bars is cut off.
+  const px = Math.min(bc.w[stc - 1] * 0.94 / em, bc.h / 0.6);
   const pt = Math.max(6, Math.floor(px * 0.75));                  // px → pt
   sheet.getRange(top + bc.r - 1, colOffset + bc.c)
     .setValue(enc)
@@ -98,6 +102,8 @@ function ownBarcodePut_(sheet, bc, top, colOffset, stc, code) {
     .setFontSize(pt)
     .setFontColor('#000000')
     .setHorizontalAlignment('center')
-    .setVerticalAlignment('middle')
+    .setVerticalAlignment(pt / 0.75 > bc.h ? 'top' : 'middle')
     .setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+  // Keep the sticker's row heights exactly as they are (a big font must not stretch the rows)
+  if (stc === 1) bc.hs.forEach((hh, k) => sheet.setRowHeightsForced(top + bc.r - 1 + k, 1, hh));
 }
