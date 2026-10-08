@@ -125,23 +125,20 @@ function ownBarcodePut_(sheet, bc, top, colOffset, stc, code) {
   if (stc === 1) bc.hs.forEach((hh, k) => sheet.setRowHeightsForced(top + bc.r - 1 + k, 1, hh));
 }
 
-// After LOAD: small window with a button that reloads the spreadsheet on the sticker sheet
-// (in-cell pictures added by a script are saved at once but only drawn after a page refresh).
+// After LOAD: "Stickers loaded" + OK, and a Refresh link in case a barcode picture is not drawn yet
+// (in-cell pictures added by a script sometimes only show after a page refresh).
 function ownBarcodeRefreshDialog_(ss, stkr) {
   const gid = stkr.getSheetId();   // the ?…&r= part makes it a real reload, not just a jump
   const url = ss.getUrl() + '?gid=' + gid + '&r=' + Date.now() + '#gid=' + gid;
+  // Chrome does not let a script window reload the page by itself, so the reload is a click (only if needed)
   const html = HtmlService.createHtmlOutput(
     '<div style="font-family:Arial,sans-serif;font-size:14px;text-align:center;padding:6px">' +
-    '<p style="margin:4px 0 14px">✅ Stickers loaded.<br>Refreshing to show the barcodes…</p>' +
-    '<a href="' + url + '" target="_top" style="display:inline-block;background:#1f4e5f;color:#fff;' +
-    'padding:10px 22px;border-radius:6px;font-weight:bold;text-decoration:none">🔄 Refresh now</a>' +
-    '<p id="m" style="margin:12px 0 0;font-size:11px;color:#888">Refreshing…</p></div>' +
-    // Refresh by itself; if the browser blocks that, the button is there to click
-    '<script>var u=' + JSON.stringify(url) + ';' +
-    'setTimeout(function(){try{window.top.location.replace(u);}catch(e){}' +
-    'setTimeout(function(){document.getElementById("m").textContent="Click the button (or press F5)";},1500);},300);' +
-    '</script>'
-  ).setWidth(300).setHeight(170);
+    '<p style="margin:4px 0 14px">✅ Stickers loaded.</p>' +
+    '<button onclick="google.script.host.close()" style="background:#2e7d32;color:#fff;border:none;' +
+    'padding:10px 26px;border-radius:6px;font-weight:bold;font-size:14px;cursor:pointer">OK</button>' +
+    '<p style="margin:14px 0 0;font-size:12px;color:#666">Barcode missing? ' +
+    '<a href="' + url + '" target="_top" style="color:#1f4e5f;font-weight:bold">🔄 Refresh</a></p></div>'
+  ).setWidth(280).setHeight(150);
   SpreadsheetApp.getUi().showModalDialog(html, 'Stickers ready');
 }
 
