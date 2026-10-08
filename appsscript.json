@@ -1,0 +1,155 @@
+{
+  "timeZone": "Asia/Kolkata",
+  "dependencies": {
+    "enabledAdvancedServices": [
+      {
+        "userSymbol": "Sheets",
+        "version": "v4",
+        "serviceId": "sheets"
+      }
+    ]
+  },
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "sheets": {
+    "macros": [
+      {
+        "menuName": "Reset Pages",
+        "functionName": "ResetPages"
+      },
+      {
+        "menuName": "Print",
+        "functionName": "Print"
+      },
+      {
+        "menuName": "Clear Console",
+        "functionName": "ClearConsole"
+      },
+      {
+        "menuName": "insert",
+        "functionName": "insert",
+        "defaultShortcut": "Ctrl+Alt+Shift+1"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro 1",
+        "functionName": "Untitledmacro1"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro 1",
+        "functionName": "Untitledmacro1"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro 2",
+        "functionName": "Untitledmacro2"
+      },
+      {
+        "menuName": "Untitled macro 3",
+        "functionName": "Untitledmacro3"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro 2",
+        "functionName": "Untitledmacro2"
+      },
+      {
+        "menuName": "Untitled macro 3",
+        "functionName": "Untitledmacro3"
+      },
+      {
+        "menuName": "Untitled macro 4",
+        "functionName": "Untitledmacro4"
+      },
+      {
+        "menuName": "Untitled macro 5",
+        "functionName": "Untitledmacro5"
+      },
+      {
+        "menuName": "Untitled macro 6",
+        "functionName": "Untitledmacro6"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro 1",
+        "functionName": "Untitledmacro1"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro 1",
+        "functionName": "Untitledmacro1"
+      },
+      {
+        "menuName": "Untitled macro 2",
+        "functionName": "Untitledmacro2"
+      },
+      {
+        "menuName": "Untitled macro 3",
+        "functionName": "Untitledmacro3"
+      },
+      {
+        "menuName": "Clear Import Product List",
+        "functionName": "ClearImportProductList"
+      },
+      {
+        "menuName": "filters",
+        "functionName": "filters"
+      },
+      {
+        "menuName": "Clear Import Product List asd",
+        "functionName": "ClearImportProductListasd"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      },
+      {
+        "menuName": "Untitled macro",
+        "functionName": "Untitledmacro"
+      }
+    ]
+  }
+}
