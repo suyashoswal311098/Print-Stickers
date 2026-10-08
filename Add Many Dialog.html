@@ -6,7 +6,10 @@
   * { box-sizing: border-box; }
   body { font-family: Calibri, Arial, sans-serif; margin: 0; color: #1f2d3d; font-size: 14px; }
   .wrap { display: flex; flex-direction: column; height: 100vh; padding: 10px 12px; gap: 8px; }
-  #q { width: 100%; font-size: 16px; padding: 9px 10px; border: 2px solid #1f4e5f; border-radius: 6px; outline: none; }
+  .top { display: flex; gap: 8px; }
+  #ordBtn { flex: none; background: #1f4e5f; color: #fff; padding: 8px 12px; font-size: 14px; }
+  #ordBtn:disabled { background: #b0bec5; cursor: default; }
+  #q { flex: 1; min-width: 0; width: 100%; font-size: 16px; padding: 9px 10px; border: 2px solid #1f4e5f; border-radius: 6px; outline: none; }
   #q:focus { border-color: #6a1b9a; }
   .hint { font-size: 12px; color: #667; }
   .list { flex: 1; overflow-y: auto; border: 1px solid #cfd8dc; border-radius: 6px; }
@@ -41,8 +44,11 @@
 </head>
 <body>
 <div class="wrap">
-  <input id="q" placeholder="Type to search, e.g. bold badam" autocomplete="off" disabled>
-  <div class="hint">Type a qty and the product gets ticked. Search again to add more — ticks are kept. Enter jumps to the next qty box.</div>
+  <div class="top">
+    <input id="q" placeholder="Type to search, e.g. bold badam" autocomplete="off" disabled>
+    <button id="ordBtn" onclick="showOrder()" disabled title="See all ticked products and change their order">↕ Order</button>
+  </div>
+  <div class="hint">Type a qty and the product gets ticked. Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
   <div class="list" id="list"><div class="empty"><span class="spin"></span>Loading products…</div></div>
   <div id="msg"></div>
   <div class="foot">
@@ -145,6 +151,13 @@
     updateSum();
   }
 
+  function showOrder() {
+    var q = document.getElementById('q');
+    q.value = '';
+    render();
+    document.getElementById('list').scrollTop = 0;
+  }
+
   function updateSum() {
     var total = 0;
     order.forEach(function (n) { total += picked[n]; });
@@ -153,6 +166,8 @@
     s += '<br><span class="' + (after > limit ? 'over' : '') + '">Already in list ' + used + ' → after: ' + after + ' / ' + limit + (after > limit ? ' — over the limit' : '') + '</span>';
     document.getElementById('sum').innerHTML = s;
     document.getElementById('go').disabled = busy || !order.length || after > limit;
+    document.getElementById('ordBtn').disabled = busy || !order.length;
+    document.getElementById('ordBtn').textContent = order.length ? '↕ Order (' + order.length + ')' : '↕ Order';
     document.getElementById('go').textContent = order.length ? 'Submit (' + order.length + ')' : 'Submit';
   }
 

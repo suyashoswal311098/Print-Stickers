@@ -39,7 +39,7 @@ function amGetProducts() {
 }
 
 // items = [{name, qty}] → inserts each like the INSERT button. Returns a summary.
-// FAST: barcode + colour are looked up in Product List (by name, first match = like VLOOKUP) and all
+// FAST: barcode + colour are looked up in Product List (by name, or by "<barcode> <name>") and all
 // rows are written in one go. Safety check first: the first product is put in B2 and the sheet's own
 // A2 (barcode) / H2 (colour) formulas must give the same answer; if not, the slow per-item way is used.
 function amInsertMany(items) {
@@ -64,13 +64,23 @@ function amInsertMany(items) {
     // Product List B (barcode), C (name), H (colour) — first row per name
     const n = Math.max(list.getLastRow() - 1, 1);
     const pl = list.getRange(2, 1, n, 9).getValues();
-    const byName = {};
+    const byName = {}, byBar = {};
     pl.forEach(r => {
-      const k = normName_(r[2]);
-      if (k && !byName[k]) byName[k] = { bar: r[1], colour: r[7] };
+      const k = normName_(r[2]), bk = normBar_(r[1]);
+      const v = { bar: r[1], colour: r[7], name: normName_(r[2]) };
+      if (k && !byName[k]) byName[k] = v;
+      if (bk && !byBar[bk]) byBar[bk] = v;
     });
+    // Dropdown names may be "<barcode> <name>" (e.g. "49876602 PUMPKIN SEEDS 100GM")
+    const lookup = nm => {
+      const full = normName_(nm);
+      if (byName[full]) return byName[full];
+      const m = full.match(/^(\S+)\s+(.+)$/);
+      const p = m && byBar[normBar_(m[1])];
+      return p && (!p.name || p.name === m[2]) ? p : null;
+    };
     items.forEach(it => {
-      const p = byName[normName_(it.name)];
+      const p = lookup(it.name);
       if (p && p.bar !== '' && p.bar !== null) plan.push({ name: it.name, qty: Number(it.qty), bar: p.bar, colour: p.colour });
       else notFound.push({ name: it.name, qty: Number(it.qty) }); // left to the slow way below
     });
