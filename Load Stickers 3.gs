@@ -124,7 +124,8 @@ var stickerDetails = {
   idt: 9,
   inote: 8,
   iseperator: 1,
-  currentNumber: 1 // Start numbering from 1 for the first product batch
+  currentNumber: 1, // Start numbering from 1 for the first product batch
+  bc: ownBarcodeSetup_(rstk, stkr) // own barcode (Barcode 128); null = keep the template's image formula
 };
 
 // Generate stickers for each product
@@ -175,8 +176,8 @@ function getRowDetails(sheet, row) {
         adjustedMrp = wmrp * wpack;
         adjustedNpp = wnpp * wpack;
 
-        // Modify wcode to include "-wpack"
-        wcode += `-${wpack}`;
+        // Modify wcode to include "-wpack" (max 2 decimals, e.g. 0.8333 → 0.83, so the barcode stays short)
+        wcode += `-${Math.round(wpack * 100) / 100}`;
 
         // Automatically calculate new weight
         var newWeight = Math.round(weight * wpack); // Calculate adjusted weight
@@ -221,10 +222,13 @@ function addStickerWithNumber(sheet, stickerDetails, details, batchNumber, total
   // Place product code
   sheet.getRange(ic, 3 + colOffset).setValue(details.wcode);
 
+  // Own barcode (see Barcode 128); otherwise the template's =image(...) barcode stays
+  if (stickerDetails.bc) ownBarcodePut_(sheet, stickerDetails.bc, iseperator, colOffset, stc, details.wcode);
+
   // Place product name with its background and font colors
   sheet.getRange(iname, 1 + colOffset)
     .setValue(details.wname)
-    .setFontColor(details.clr === "#FFFFFF" ? "#000000" : "#ffffff")
+    .setFontColor(String(details.clr).trim().toLowerCase() === "#ffffff" ? "#000000" : "#ffffff") // white band → black text
     .setBackground(details.clr);
 
   // Place adjusted MRP (rounded to nearest integer)
