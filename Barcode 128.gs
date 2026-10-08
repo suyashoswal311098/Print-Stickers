@@ -63,12 +63,16 @@ const OWN_BARCODE_ = true;
 // and the size of that space on the sticker sheet. Returns null if not found (then nothing changes).
 function ownBarcodeSetup_(rstk, stkr) {
   if (!OWN_BARCODE_) return null;
+  // Only the barcode picture formula (…barcode/image?content=…&symbology=…), never the logo
   const f = rstk.getRange('A1:F9').getFormulas();
-  let r = 0, c = 0;
-  for (let i = 0; i < f.length && !r; i++)
+  let r = 0, c = 0, n = 0;
+  for (let i = 0; i < f.length; i++)
     for (let j = 0; j < f[i].length; j++)
-      if (/barcode/i.test(f[i][j])) { r = i + 1; c = j + 1; break; }
-  if (!r) return null;
+      if (/symbology=|barcode\/image/i.test(f[i][j])) { if (!r) { r = i + 1; c = j + 1; } n++; }
+  if (n !== 1) {   // none, or more than one → don't guess
+    console.warn('Own barcode: found ' + n + ' barcode formula(s) in the template, using the website barcode');
+    return null;
+  }
   const m = rstk.getRange(r, c).getMergedRanges();
   const rows = m.length ? m[0].getNumRows() : 1, cols = m.length ? m[0].getNumColumns() : 1;
   const w = [0, 6, 12].map(off => {
