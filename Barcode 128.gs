@@ -58,7 +58,7 @@ function BARCODE128(text) {
 
 // ---- Used by LOAD (load2 in Load Stickers 3) ------------------------------------------------
 // true = draw the barcode with our own font; false = keep the template's =image(...) website barcode.
-const OWN_BARCODE_ = true;
+const OWN_BARCODE_ = false;   // user chose the website barcode again (8 Oct 2026); true = own barcode picture
 
 // Finds the barcode cell in the sticker template (the cell whose formula fetches a barcode image)
 // and the size of that space on the sticker sheet. Returns null if not found (then nothing changes).
