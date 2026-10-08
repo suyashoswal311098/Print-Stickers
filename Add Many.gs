@@ -1,7 +1,8 @@
 /***** ADD MANY — pick many products + qty in one window, then insert them all *****
  * Button "ADD MANY" on Print Console (left of LOAD) and Product Tools menu → openAddMany.
  * Each ticked product goes through the SAME insert as the INSERT button (insert3, silent),
- * one by one: B2 + C2 filled, formulas recalculated, insert3 run. Packing size = 1.
+ * Fast path writes all rows at once (checked against the sheet's own A2/H2 formulas first);
+ * slow path = B2 + C2 filled, formulas recalculated, insert3 run, one by one. Packing size = 1.
  */
 
 const AM_BUTTON_TITLE_ = 'ADD MANY';
@@ -38,6 +39,9 @@ function amGetProducts() {
 }
 
 // items = [{name, qty}] → inserts each like the INSERT button. Returns a summary.
+// FAST: barcode + colour are looked up in Product List (by name, first match = like VLOOKUP) and all
+// rows are written in one go. Safety check first: the first product is put in B2 and the sheet's own
+// A2 (barcode) / H2 (colour) formulas must give the same answer; if not, the slow per-item way is used.
 function amInsertMany(items) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const work = ss.getSheetByName('Print Console');
@@ -52,28 +56,73 @@ function amInsertMany(items) {
       ' new = ' + (used + total) + '. The limit is 240.' };
   }
 
-  const cachedProdList = list.getRange(2, 2, Math.max(list.getLastRow() - 1, 1), 9).getValues();
-  let inserted = 0;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { inserted: 0, skipped: [], error: 'Another insert is running. Please try again.' };
+  let fastOk = false, plan = [], notFound = [];
   const skipped = [];
-  items.forEach(it => {
-    work.getRange('B2:D2').setValues([[String(it.name).trim(), Number(it.qty), 1]]);
-    SpreadsheetApp.flush(); // let A2 / H2 formulas follow B2
-    let status;
-    try {
-      status = insert3(null, true, cachedProdList);
-    } catch (err) {
-      status = 'error: ' + err.message;
-    }
-    if (status === 'success') inserted++;
-    else skipped.push(it.name + ' (' + (status === 'skipped' ? 'not found in Product List' : status) + ')');
-  });
+  try {
+    // Product List B (barcode), C (name), H (colour) — first row per name
+    const n = Math.max(list.getLastRow() - 1, 1);
+    const pl = list.getRange(2, 1, n, 9).getValues();
+    const byName = {};
+    pl.forEach(r => {
+      const k = normName_(r[2]);
+      if (k && !byName[k]) byName[k] = { bar: r[1], colour: r[7] };
+    });
+    items.forEach(it => {
+      const p = byName[normName_(it.name)];
+      if (p && p.bar !== '' && p.bar !== null) plan.push({ name: it.name, qty: Number(it.qty), bar: p.bar, colour: p.colour });
+      else notFound.push({ name: it.name, qty: Number(it.qty) }); // left to the slow way below
+    });
 
-  // Leave the top row clean, like after INSERT
-  work.getRange('B2:C2').clearContent();
-  work.getRange('D2').setValue(1);
+    if (plan.length) {
+      // Safety check with the sheet's own formulas
+      work.getRange('B2:C2').setValues([[String(plan[0].name).trim(), plan[0].qty]]);
+      SpreadsheetApp.flush();
+      const top = work.getRange('A2:H2').getValues()[0];
+      fastOk = normBar_(top[0]) === normBar_(plan[0].bar) && String(top[7]) === String(plan[0].colour);
+      if (!fastOk) console.warn('Add many: fast check failed', top[0], plan[0].bar, top[7], plan[0].colour);
+      work.getRange('B2:C2').clearContent();
+      work.getRange('D2').setValue(1);
+    }
+
+    if (fastOk) {
+      // Same row as insert3 builds: A barcode, C qty, D packing 1, J colour (value + background), rest blank
+      const row = Math.max(work.getLastRow() + 1, 8);
+      const vals = plan.map(p => [p.bar, '', p.qty, 1, '', '', '', '', '', p.colour]);
+      const bgs = plan.map(p => ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', p.colour || '#ffffff']);
+      const rng = work.getRange(row, 1, plan.length, 10);
+      rng.setValues(vals);
+      rng.setBackgrounds(bgs);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+
+  let inserted = fastOk ? plan.length : 0;
+  const slow = fastOk ? notFound : plan.concat(notFound);
+  if (slow.length) {
+    // Slow, sure way: exactly what the INSERT button does, one by one
+    const cachedProdList = list.getRange(2, 2, Math.max(list.getLastRow() - 1, 1), 9).getValues();
+    slow.forEach(it => {
+      work.getRange('B2:D2').setValues([[String(it.name).trim(), it.qty, 1]]);
+      SpreadsheetApp.flush(); // let A2 / H2 formulas follow B2
+      let status;
+      try {
+        status = insert3(null, true, cachedProdList);
+      } catch (err) {
+        status = 'error: ' + err.message;
+      }
+      if (status === 'success') inserted++;
+      else skipped.push(it.name + ' (' + (status === 'skipped' ? 'not found in Product List' : status) + ')');
+    });
+    work.getRange('B2:C2').clearContent();
+    work.getRange('D2').setValue(1);
+  }
+
   work.getRange('B2').activate();
   ss.toast('Inserted: ' + inserted + (skipped.length ? ' | Skipped: ' + skipped.length : ''), '✅ Add many', 6);
-  return { inserted: inserted, skipped: skipped };
+  return { inserted: inserted, skipped: skipped, fast: fastOk };
 }
 
 // Puts the ADD MANY button on Print Console once (left of LOAD). Safe to run again.

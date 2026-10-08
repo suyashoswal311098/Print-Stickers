@@ -186,7 +186,7 @@
     var items = order.map(function (n) { return { name: n, qty: picked[n] }; });
     busy = true; updateSum();
     document.getElementById('q').disabled = true;
-    showMsg('<span class="spin"></span>Inserting ' + items.length + ' product' + (items.length === 1 ? '' : 's') + '… (about 1 second each — keep this window open)');
+    showMsg('<span class="spin"></span>Inserting ' + items.length + ' product' + (items.length === 1 ? '' : 's') + '… keep this window open');
     google.script.run
       .withSuccessHandler(function (r) {
         busy = false;
@@ -198,7 +198,7 @@
           document.getElementById('cancel').textContent = 'Close';
           render();
         } else {
-          showMsg('✅ Inserted ' + r.inserted + ' product' + (r.inserted === 1 ? '' : 's') + '.', 'ok');
+          showMsg('✅ Inserted ' + r.inserted + ' product' + (r.inserted === 1 ? '' : 's') + (r.fast ? ' ⚡' : ' (slow way)') + '.', 'ok');
           setTimeout(function () { google.script.host.close(); }, 1200);
         }
       })
