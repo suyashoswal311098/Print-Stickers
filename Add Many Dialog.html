@@ -18,6 +18,9 @@
   .row.on { background: #e8f5e9; }
   .row input[type=checkbox] { width: 18px; height: 18px; flex: none; cursor: pointer; }
   .row .nm { flex: 1; text-transform: uppercase; }
+  .row .dup { flex: none; border: 1px solid #b39ddb; background: #fff; color: #6a1b9a; border-radius: 4px; padding: 1px 7px; font-size: 14px; font-weight: bold; cursor: pointer; }
+  .row .dup:hover { background: #f3e5f5; }
+  .row .again { font-size: 11px; color: #6a1b9a; background: #f3e5f5; border-radius: 3px; padding: 0 4px; text-transform: none; }
   .row .pl { flex: none; font-size: 11px; color: #90a4ae; margin-right: -4px; }
   .row input.pk { width: 58px; font-size: 13px; padding: 5px 4px; text-align: right; border: 1px solid #cfd8dc; border-radius: 4px; color: #455a64; }
   .row input.pk:focus { outline: 2px solid #6a1b9a; }
@@ -58,7 +61,7 @@
     <input id="q" placeholder="Type to search, e.g. bold badam" autocomplete="off" autofocus>
     <button id="ordBtn" onclick="showOrder()" disabled title="See all ticked products and change their order">↕ Order</button>
   </div>
-  <div class="hint">Tick a product (qty 1) or type a qty. Small box = packing size (default 1). Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
+  <div class="hint">Tick a product (qty 1) or type a qty. ＋ = same product again (e.g. another pack). Small box = packing size (default 1). Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
   <div class="list" id="list"><div class="empty"><span class="spin"></span>Loading products…</div></div>
   <div id="msg"></div>
   <div class="foot">
@@ -74,9 +77,24 @@
   // Cursor in the search box straight away (you can type while products load)
   function focusQ() { var q = document.getElementById('q'); if (document.activeElement !== q && !busy) q.focus(); }
   focusQ(); window.addEventListener('load', focusQ); setTimeout(focusQ, 150); setTimeout(focusQ, 500);
-  var picked = {};   // name -> qty (only ticked ones)
-  var packs = {};    // name -> packing size (default 1)
-  var order = [];    // names in the order they were ticked
+  // Each ticked LINE has its own id, so the same product can be added twice (e.g. pack 1 and pack 1.5)
+  var lines = {};     // id -> {n: product name, qty, pack}
+  var order = [];     // line ids in the order they go in
+  var draftPack = {}; // product name -> pack typed before ticking (default 1)
+  var nextId = 1;
+  function linesOf(n) { return order.filter(function (id) { return lines[id].n === n; }); }
+  function addLine(n, qty, pack, afterId) {
+    var id = 'L' + (nextId++);
+    lines[id] = { n: n, qty: qty, pack: pack > 0 ? pack : 1 };
+    var k = afterId ? order.indexOf(afterId) : -1;
+    if (k >= 0) order.splice(k + 1, 0, id); else order.push(id);
+    return id;
+  }
+  function dropLine(id) { delete lines[id]; order = order.filter(function (x) { return x !== id; }); }
+  function focusIn(id, cls) {
+    var b = document.querySelector('#list .row[data-id="' + id + '"] input.' + cls);
+    if (b) { b.focus(); b.select(); }
+  }
   var busy = false;
 
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -103,15 +121,17 @@
     return out;
   }
 
-  function rowHtml(n, i, ord) {
-    var on = picked.hasOwnProperty(n);
+  function rowHtml(n, id, i, ord) {
+    var on = !!id, L = on ? lines[id] : null;
     var last = order.length - 1;
-    return '<div class="row' + (on ? ' on' : '') + (ord ? ' ord' : '') + '" data-n="' + esc(n) + '">' +
+    var dupNo = on ? linesOf(n).indexOf(id) : -1;
+    return '<div class="row' + (on ? ' on' : '') + (ord ? ' ord' : '') + '" data-n="' + esc(n) + '" data-id="' + (id || '') + '">' +
       (ord ? '<span class="hd" title="Drag to change the order">⠿</span><span class="no">' + (i + 1) + '</span>' : '') +
       '<input type="checkbox"' + (on ? ' checked' : '') + ' tabindex="-1">' +
-      '<span class="nm">' + esc(n) + '</span>' +
-      '<span class="pl">Pack</span><input class="pk" type="number" min="0" step="0.25" inputmode="decimal" title="Packing size" value="' + (packs[n] || 1) + '">' +
-      '<span class="pl">Qty</span><input class="qty" type="number" min="1" step="1" inputmode="numeric" title="Sticker qty" value="' + (on ? picked[n] : '') + '">' +
+      '<span class="nm">' + esc(n) + (dupNo > 0 ? ' <span class="again">again</span>' : '') + '</span>' +
+      (on ? '<button class="dup" tabindex="-1" title="Add this product again (e.g. another pack size)">＋</button>' : '') +
+      '<span class="pl">Pack</span><input class="pk" type="number" min="0" step="0.25" inputmode="decimal" title="Packing size" value="' + (on ? L.pack : (draftPack[n] || 1)) + '">' +
+      '<span class="pl">Qty</span><input class="qty" type="number" min="1" step="1" inputmode="numeric" title="Sticker qty" value="' + (on ? L.qty : '') + '">' +
       (ord ? '<button class="mv" data-d="-1" tabindex="-1"' + (i === 0 ? ' disabled' : '') + ' title="Move up">↑</button>' +
              '<button class="mv" data-d="1" tabindex="-1"' + (i === last ? ' disabled' : '') + ' title="Move down">↓</button>' : '') +
       '</div>';
@@ -120,7 +140,7 @@
   function renumber() {
     var rows = document.querySelectorAll('#list .row.ord');
     for (var i = 0; i < rows.length; i++) {
-      var k = order.indexOf(rows[i].getAttribute('data-n'));
+      var k = order.indexOf(rows[i].getAttribute('data-id'));
       rows[i].querySelector('.no').textContent = k >= 0 ? k + 1 : '–';
     }
   }
@@ -132,18 +152,21 @@
     var found = matches(q);
     var foundSet = {};
     found.forEach(function (n) { foundSet[n] = 1; });
-    var others = order.filter(function (n) { return !foundSet[n]; });
+    var others = order.filter(function (id) { return !foundSet[lines[id].n]; });
     if (q) {
       html += '<div class="head">' + (found.length ? found.length + (found.length >= 300 ? '+' : '') + ' match' + (found.length === 1 ? '' : 'es') + ' for “' + esc(q) + '”' : 'No product has “' + esc(q) + '”') + '</div>';
-      html += found.map(function (n) { return rowHtml(n); }).join('');
+      html += found.map(function (n) {
+        var ids = linesOf(n);
+        return ids.length ? ids.map(function (id) { return rowHtml(n, id); }).join('') : rowHtml(n, '');
+      }).join('');
     }
     if (others.length) {
       if (q) {
         html += '<div class="head">Ticked (' + others.length + ' more) — clear the search to change the order</div>';
-        html += others.map(function (n) { return rowHtml(n); }).join('');
+        html += others.map(function (id) { return rowHtml(lines[id].n, id); }).join('');
       } else {
         html += '<div class="head">Ticked (' + others.length + ') — this is the order they go in. Drag a row (or ⠿) or use ↑ ↓</div>';
-        html += others.map(function (n, i) { return rowHtml(n, i, true); }).join('');
+        html += others.map(function (id, i) { return rowHtml(lines[id].n, id, i, true); }).join('');
       }
     }
     if (!loaded) html = '<div class="empty"><span class="spin"></span>Loading products…</div>';
@@ -152,20 +175,19 @@
     updateSum();
   }
 
-  function setQty(n, v, row) {
-    var qty = parseInt(v, 10);
+  // Typing a qty: ticks the row (new line) or changes it; clearing it unticks (row stays until redraw)
+  function setQty(row, v) {
+    var qty = parseInt(v, 10), id = row.getAttribute('data-id'), n = row.getAttribute('data-n');
     if (qty > 0) {
-      if (!picked.hasOwnProperty(n)) order.push(n);
-      picked[n] = qty;
-    } else if (picked.hasOwnProperty(n)) {
-      delete picked[n];
-      order = order.filter(function (x) { return x !== n; });
+      if (!id) { id = addLine(n, qty, draftPack[n] || 1); row.setAttribute('data-id', id); }
+      else lines[id].qty = qty;
+    } else if (id) {
+      draftPack[n] = lines[id].pack;
+      dropLine(id); row.setAttribute('data-id', '');
     }
-    if (row) {
-      var on = picked.hasOwnProperty(n);
-      row.classList.toggle('on', on);
-      row.querySelector('input[type=checkbox]').checked = on;
-    }
+    var on = !!row.getAttribute('data-id');
+    row.classList.toggle('on', on);
+    row.querySelector('input[type=checkbox]').checked = on;
     updateSum();
   }
 
@@ -178,9 +200,9 @@
 
   function updateSum() {
     var total = 0;
-    order.forEach(function (n) { total += picked[n]; });
+    order.forEach(function (id) { total += lines[id].qty; });
     var after = used + total;
-    var s = '<b>' + order.length + '</b> product' + (order.length === 1 ? '' : 's') + ' · <b>' + total + '</b> stickers';
+    var s = '<b>' + order.length + '</b> line' + (order.length === 1 ? '' : 's') + ' · <b>' + total + '</b> stickers';
     s += '<br><span class="' + (after > limit ? 'over' : '') + '">Already in list ' + used + ' → after: ' + after + ' / ' + limit + (after > limit ? ' — over the limit' : '') + '</span>';
     document.getElementById('sum').innerHTML = s;
     document.getElementById('go').disabled = busy || !order.length || after > limit;
@@ -201,36 +223,41 @@
 
   var listEl = document.getElementById('list');
   listEl.addEventListener('input', function (e) {
+    var row = e.target.closest('.row');
     if (e.target.classList.contains('pk')) {
-      var pv = parseFloat(e.target.value);
-      packs[e.target.closest('.row').getAttribute('data-n')] = pv > 0 ? pv : 1;
+      var pv = parseFloat(e.target.value), pid = row.getAttribute('data-id');
+      if (pid) lines[pid].pack = pv > 0 ? pv : 1; else draftPack[row.getAttribute('data-n')] = pv > 0 ? pv : 1;
       return;
     }
     if (!e.target.classList.contains('qty')) return;
-    var row = e.target.closest('.row');
-    setQty(row.getAttribute('data-n'), e.target.value, row);
+    setQty(row, e.target.value);
     renumber();
   });
   listEl.addEventListener('click', function (e) {
     var row = e.target.closest('.row');
     if (noClick || !row || e.target.classList.contains('qty') || e.target.classList.contains('pk') || e.target.classList.contains('hd')) return;
+    var id = row.getAttribute('data-id'), n = row.getAttribute('data-n');
     if (e.target.classList.contains('mv')) {
-      var nm = row.getAttribute('data-n'), k = order.indexOf(nm), to = k + Number(e.target.getAttribute('data-d'));
+      var k = order.indexOf(id), to = k + Number(e.target.getAttribute('data-d'));
       if (k < 0 || to < 0 || to >= order.length) return;
-      order.splice(k, 1); order.splice(to, 0, nm);
+      order.splice(k, 1); order.splice(to, 0, id);
       render();
       return;
     }
-    var n = row.getAttribute('data-n');
-    var box = row.querySelector('input.qty');
-    if (picked.hasOwnProperty(n)) {  // untick
-      box.value = '';
-      setQty(n, '', row);
+    if (e.target.classList.contains('dup')) {   // same product again → new line right below, type its pack
+      var nid = addLine(n, 1, 1, id);
+      render();
+      focusIn(nid, 'pk');
+      return;
+    }
+    if (id) {                         // untick this line
+      draftPack[n] = lines[id].pack;
+      dropLine(id);
+      render();
     } else {                          // tick → qty 1 (selected, so typing replaces it)
-      box.value = '1';
-      setQty(n, '1', row);
-      renumber();
-      box.focus(); box.select();
+      var newId = addLine(n, 1, draftPack[n] || 1);
+      render();
+      focusIn(newId, 'qty');
     }
   });
   listEl.addEventListener('keydown', function (e) {
@@ -258,7 +285,7 @@
     var row = e.target.closest('.row.ord');
     if (!row || busy) return;
     var t = e.target;
-    if (t.classList.contains('qty') || t.classList.contains('pk') || t.classList.contains('mv')) return;
+    if (t.classList.contains('qty') || t.classList.contains('pk') || t.classList.contains('mv') || t.classList.contains('dup')) return;
     var onHandle = t.classList.contains('hd');
     if (!onHandle && e.pointerType !== 'mouse') return;
     if (onHandle) e.preventDefault();
@@ -328,12 +355,12 @@
     else slot = 0;
     d.row.style.transition = 'transform 0.15s ease';
     d.row.style.transform = 'translateY(' + slot + 'px)';
-    var names = d.rows.map(function (r) { return r.getAttribute('data-n'); });
-    var nm = names.splice(d.idx, 1)[0];
-    names.splice(d.to, 0, nm);
-    names = names.filter(function (n) { return picked.hasOwnProperty(n); });
+    var ids = d.rows.map(function (r) { return r.getAttribute('data-id'); });
+    var mv = ids.splice(d.idx, 1)[0];
+    ids.splice(d.to, 0, mv);
+    ids = ids.filter(function (x) { return x && lines[x]; });
     setTimeout(function () {
-      order = names.concat(order.filter(function (n) { return names.indexOf(n) < 0; }));
+      order = ids.concat(order.filter(function (x) { return ids.indexOf(x) < 0; }));
       var top = listEl.scrollTop;
       render();
       listEl.scrollTop = top;
@@ -365,19 +392,19 @@
 
   function submitAll() {
     if (busy || !order.length) return;
-    var names = order.slice();
-    var items = order.map(function (n) { return { name: n, qty: picked[n], pack: packs[n] || 1 }; });
+    var names = order.map(function (id) { return lines[id].n; });
+    var items = order.map(function (id) { return { name: lines[id].n, qty: lines[id].qty, pack: lines[id].pack }; });
     var pkdVal = document.getElementById('pkd').value;
     busy = true; updateSum();
     document.getElementById('q').disabled = true;
-    showMsg('<span class="spin"></span>Inserting ' + items.length + ' product' + (items.length === 1 ? '' : 's') + '… keep this window open');
+    showMsg('<span class="spin"></span>Inserting ' + items.length + ' line' + (items.length === 1 ? '' : 's') + '… keep this window open');
     google.script.run
       .withSuccessHandler(function (r) {
         busy = false;
         if (r.error) { document.getElementById('q').disabled = false; updateSum(); showMsg(r.error, 'err'); return; }
         if (r.skipped && r.skipped.length) {
           afterInsert(names, 'Inserted ' + r.inserted + '. Skipped ' + r.skipped.length + ':<br>' + r.skipped.map(esc).join('<br>'), 'err', false);
-          picked = {}; order = []; used = 0;
+          lines = {}; order = []; used = 0;
           document.getElementById('go').style.display = 'none';
           document.getElementById('cancel').textContent = 'Close';
           render();
