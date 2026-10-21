@@ -6,7 +6,7 @@
  * Tax Rate Code left empty = the Default Tax Rate Code in B2 (applied in the file).
  * Menu Product Tools → Purchase CSV for POS → Download XLSX gives a file with exactly the POS columns:
  *   Product Code | Net Unit Cost | Quantity | Product Variant | Tax Rate Code | Discount | Expiry
- * Sheet columns: A Product | B..H = the 7 POS columns | I Amount (info) | J Check (info) | K Cost override (optional)
+ * Sheet columns: A Product | B..H = the 7 POS columns | I Total ex tax (info) | J Check (info) | K Cost override (optional) | L Tax used (info) | M Rate incl tax (info) | N Total incl tax (info)
  */
 
 const PC_SHEET_ = 'Purchase CSV';
@@ -54,35 +54,41 @@ function setupPurchaseSheet() {
   const sh = ss.getSheetByName(PC_SHEET_) || ss.insertSheet(PC_SHEET_);
   const lastRow = PC_FIRST_ + PC_ROWS_ - 1;
   if (sh.getMaxRows() < lastRow) sh.insertRowsAfter(sh.getMaxRows(), lastRow - sh.getMaxRows());
-  if (sh.getMaxColumns() < 12) sh.insertColumnsAfter(sh.getMaxColumns(), 12 - sh.getMaxColumns());
+  if (sh.getMaxColumns() < 14) sh.insertColumnsAfter(sh.getMaxColumns(), 14 - sh.getMaxColumns());
 
   sh.getRange('A1').setValue('PURCHASE FILE FOR POS  (Add Purchase by CSV)').setFontSize(14).setFontWeight('bold');
   sh.getRange('A2').setValue('Default Tax Rate Code  →').setHorizontalAlignment('right').setFontWeight('bold');
   sh.getRange('B2').setDataValidation(SpreadsheetApp.newDataValidation()
     .requireValueInList(pcTaxCodes_(), true).setAllowInvalid(false).build()).setBackground('#fff2cc');
-  sh.getRange('G2').setValue('Total amount').setHorizontalAlignment('right').setFontWeight('bold');
+  sh.getRange('G2').setValue('Total ex tax').setHorizontalAlignment('right').setFontWeight('bold');
   sh.getRange('H2').setFormula('=SUM(I' + PC_FIRST_ + ':I' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
-  sh.getRange('A3').setValue('Pick/type a product in column A and type Quantity. B, C, I, J, L are formulas in the header row (do not type there). ' +
-    'B–H go into the file in the POS order; Amount, Check and Cost override are only for you.').setFontColor('#666');
+  sh.getRange('M2').setValue('Total incl tax').setHorizontalAlignment('right').setFontWeight('bold');
+  sh.getRange('N2').setFormula('=SUM(N' + PC_FIRST_ + ':N' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
+  sh.getRange('A3').setValue('Pick/type a product in column A and type Quantity. B, C, I, J, L, M, N are formulas in the header row (do not type there). ' +
+    'B–H go into the file in the POS order; the grey columns (totals, rate incl tax) are only for you.').setFontColor('#666');
 
   // Header row: plain labels, except B, C, I, J = label + ONE array formula that fills the whole column.
   // Spill cells below must be empty, so old values/formulas in those columns are cleared first.
-  [2, 3, 9, 10, 12].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());
+  [2, 3, 9, 10, 12, 13, 14].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());
   const A = 'A' + PC_FIRST_ + ':A' + lastRow, B = 'B' + PC_FIRST_ + ':B' + lastRow, C = 'C' + PC_FIRST_ + ':C' + lastRow;
   const D = 'D' + PC_FIRST_ + ':D' + lastRow, K = 'K' + PC_FIRST_ + ':K' + lastRow;
   const bars = "'Product List'!$B$2:$B&\"\"";
-  sh.getRange(PC_HEAD_ROW_, 1, 1, 12).setNumberFormat('General');
-  sh.getRange(PC_HEAD_ROW_, 1, 1, 12).setValues([['Product (barcode + name)'].concat(PC_HEADERS_, ['', '', 'Cost override (optional)', ''])]);
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 14).setNumberFormat('General');
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 14).setValues([['Product (barcode + name)'].concat(PC_HEADERS_, ['', '', 'Cost override (optional)', '', '', ''])]);
   sh.getRange(PC_HEAD_ROW_, 2).setFormula('={"Product Code";ARRAYFORMULA(IF(' + A + '="","",IFERROR(REGEXEXTRACT(' + A + '&"","^\\S+"),"")))}');
   sh.getRange(PC_HEAD_ROW_, 3).setFormula('={"Net Unit Cost";ARRAYFORMULA(IF(' + B + '="","",IF(' + K + '<>"",' + K + ',IFERROR(VLOOKUP(' + B +
     ',{' + bars + ",'Product List'!$E$2:$E},2,FALSE),\"\"))))}");
-  sh.getRange(PC_HEAD_ROW_, 9).setFormula('={"Amount (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),' + C + '*' + D + ',""))}');
+  sh.getRange(PC_HEAD_ROW_, 9).setFormula('={"Total ex tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),' + C + '*' + D + ',""))}');
   sh.getRange(PC_HEAD_ROW_, 10).setFormula('={"Check (info)";ARRAYFORMULA(IF(' + A + '="","",IF(ISNA(VLOOKUP(' + B + ',{' + bars + ',' + bars + '},2,FALSE)),"⚠ not in Product List",' +
     'IF(NOT(ISNUMBER(' + D + ')),"⚠ type Quantity",IF(' + D + '<=0,"⚠ Quantity must be above 0",IF(NOT(ISNUMBER(' + C + ')),"⚠ no cost - type a Cost override","✔ ok"))))))}');
-  sh.getRange(PC_HEAD_ROW_, 1, 1, 12).setBackground('#4a86c8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 14).setBackground('#4a86c8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
   sh.getRange(PC_HEAD_ROW_, 1).setBackground('#1f3d66');
   sh.getRange(PC_HEAD_ROW_, 12).setFormula('={"Tax used in file (info)";ARRAYFORMULA(IF(' + A + '="","",IF(F' + PC_FIRST_ + ':F' + lastRow + '<>"",F' + PC_FIRST_ + ':F' + lastRow + ',IF($B$2="","⚠ no tax",$B$2))))}');
-  sh.getRange(PC_HEAD_ROW_, 9, 1, 4).setBackground('#7f7f7f');
+  const L = 'L' + PC_FIRST_ + ':L' + lastRow, M = 'M' + PC_FIRST_ + ':M' + lastRow;
+  const taxPct = 'VLOOKUP(' + L + ",'" + PC_TAX_SHEET_ + "'!$B$2:$C$" + (PC_TAX_CODES_.length + 1) + ',2,FALSE)';
+  sh.getRange(PC_HEAD_ROW_, 13).setFormula('={"Rate incl tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + '),IFERROR(ROUND(' + C + '*(1+' + taxPct + '/100),2),""),""))}');
+  sh.getRange(PC_HEAD_ROW_, 14).setFormula('={"Total incl tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),IFERROR(ROUND(' + C + '*' + D + '*(1+' + taxPct + '/100),2),""),""))}');
+  sh.getRange(PC_HEAD_ROW_, 9, 1, 6).setBackground('#7f7f7f');
   sh.setFrozenRows(PC_HEAD_ROW_);
 
   // formats: variant + discount + expiry as plain text ("5%" stays as typed); code/cost come from the formulas
@@ -100,7 +106,8 @@ function setupPurchaseSheet() {
   sh.getRange(PC_FIRST_, 6, PC_ROWS_, 1).setDataValidation(SpreadsheetApp.newDataValidation()
     .requireValueInList(pcTaxCodes_(), true).setAllowInvalid(false).build());
 
-  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 4).setFontColor('#666');
+  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 6).setFontColor('#666');
+  sh.getRange(PC_FIRST_, 13, PC_ROWS_, 2).setNumberFormat('#,##0.00');
   sh.getRange(PC_FIRST_, 2, PC_ROWS_, 7).setHorizontalAlignment('left');
 
   const jr = sh.getRange(PC_FIRST_, 10, PC_ROWS_, 1);
@@ -110,7 +117,7 @@ function setupPurchaseSheet() {
   ]);
 
   sh.setColumnWidth(1, 380);
-  [110, 95, 75, 100, 110, 80, 95, 95, 230, 175, 170].forEach((w, i) => sh.setColumnWidth(i + 2, w));
+  [110, 95, 75, 100, 110, 80, 95, 95, 230, 175, 170, 150, 160].forEach((w, i) => sh.setColumnWidth(i + 2, w));
   sh.activate();
   sh.getRange(PC_FIRST_, 1).activate();
   ss.toast(isNew ? 'Purchase CSV sheet created.' : 'Purchase CSV sheet checked / repaired (your lines were kept).', 'Purchase CSV', 5);
