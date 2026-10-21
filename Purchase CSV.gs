@@ -4,7 +4,7 @@
  * of the picked text, so leading zeros stay) + Net Unit Cost (NPP from Product List, or the Cost override
  * in column K). You type Quantity, optionally Variant / Tax Rate Code / Discount / Expiry.
  * Tax Rate Code left empty = the Default Tax Rate Code in B2 (applied in the file).
- * Menu Product Tools → Purchase CSV for POS → Download XLSX / CSV gives a file with exactly the POS columns:
+ * Menu Product Tools → Purchase CSV for POS → Download XLSX gives a file with exactly the POS columns:
  *   Product Code | Net Unit Cost | Quantity | Product Variant | Tax Rate Code | Discount | Expiry
  * Sheet columns: A Product | B..H = the 7 POS columns | I Amount (info) | J Check (info) | K Cost override (optional)
  */
@@ -23,7 +23,7 @@ const PC_TAX_CODES_ = [
   ['5%GST', '12%GST', 5, 1],
   ['5% GST', '28%GST', 5, 1]
 ];
-const PC_EXPIRY_FORMAT_ = 'yyyy-MM-dd';   // how a date typed in Expiry is written to the file
+const PC_EXPIRY_FORMAT_ = 'MM/dd/yyyy';   // as in the POS sample file (09/26/2019); a date typed in Expiry is written like this
 const PC_XLSX_MIME_ = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 function pcTaxCodes_() { return PC_TAX_CODES_.map(t => t[1]); }
@@ -201,12 +201,12 @@ function pcXlsxBytes_(aoa) {
     });
   }
   const wb = lib.utils.book_new();
-  lib.utils.book_append_sheet(wb, ws, 'Sheet1');
-  const u8 = new Uint8Array(lib.write(wb, { bookType: 'xlsx', type: 'array' }));
+  lib.utils.book_append_sheet(wb, ws, 'sample_purchase_products');   // same sheet name as the POS sample
+  const u8 = new Uint8Array(lib.write(wb, { bookType: 'xlsx', type: 'array', bookSST: true }));
   return Array.prototype.map.call(u8, b => b > 127 ? b - 256 : b);
 }
 
-// UTF-8 CSV, no BOM (the POS asks for that), comma separated, quotes only where needed.
+// (not used: the POS rejects .csv) UTF-8 CSV, no BOM, comma separated.
 function pcCsv_(aoa) {
   const cell = v => {
     if (v === null || v === undefined) return '';
@@ -229,8 +229,8 @@ function pcCheck() {
   }
 }
 
+// The POS page accepts .xlsx only ("Invalid file selected. Only .xlsx file is allowed"), so there is no CSV download.
 function pcExportXlsx() { pcExport_('xlsx'); }
-function pcExportCsv() { pcExport_('csv'); }
 
 function pcExport_(kind) {
   const ui = SpreadsheetApp.getUi();
@@ -245,9 +245,7 @@ function pcExport_(kind) {
   const aoa = pcAoa_(res.rows);
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
   const name = 'Purchase_' + stamp + '.' + kind;
-  const blob = kind === 'xlsx'
-    ? Utilities.newBlob(pcXlsxBytes_(aoa), PC_XLSX_MIME_, name)
-    : Utilities.newBlob(pcCsv_(aoa), 'text/csv', name);
+  const blob = Utilities.newBlob(pcXlsxBytes_(aoa), PC_XLSX_MIME_, name);
   const file = DriveApp.createFile(blob);
   const fileId = file.getId();
   scheduleExportCleanup_(fileId);   // same temp-file clean-up as Export Products to XLS

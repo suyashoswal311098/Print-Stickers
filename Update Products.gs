@@ -642,7 +642,6 @@ function onOpen() {
       .addItem('Set up / repair sheet', 'setupPurchaseSheet')
       .addItem('Check lines', 'pcCheck')
       .addItem('Download XLSX for POS', 'pcExportXlsx')
-      .addItem('Download CSV for POS', 'pcExportCsv')
       .addSeparator()
       .addItem('Clear all lines', 'pcClearRows'))
     .addSeparator()
