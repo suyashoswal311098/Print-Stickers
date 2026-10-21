@@ -63,6 +63,7 @@
   <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
   <div id="errs" class="err"></div>
   <button id="add" disabled>Add to list ⏎</button>
+  <label class="radio" style="display:inline-flex;margin-left:12px"><input type="checkbox" id="fast" checked> Fast: put in the sheet right away</label>
 </div>
 
 <div class="card">
@@ -237,12 +238,15 @@ function recalc() {
 function addToList() {
   var pl = recalc();
   if (!pl) return;
+  var fresh = [];
   pl.rows.forEach(function (r) {
     var cost = round4(pl.math.exKg * r.p.g / 1000);
-    items.push({ dd: r.p.dd, name: r.p.name, packs: r.packs, cost: cost, tax: pl.tax, t: pl.t });
+    var it = { dd: r.p.dd, name: r.p.name, packs: r.packs, cost: cost, tax: pl.tax, t: pl.t, done: false, q: false };
+    items.push(it); fresh.push(it);
   });
   kgs = {}; $('q').value = ''; $('qty').value = ''; $('rate').value = '';   // keep rate unit, incl/excl, tax for the next product
   renderVariants(); renderList();
+  if ($('fast').checked) writeItems(fresh);
   $('q').focus();
 }
 
@@ -254,32 +258,53 @@ function renderList() {
     ex += e; inc += g;
     var tr = document.createElement('tr');
     tr.innerHTML = '<td>' + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(it.cost) + '</td><td>' + esc(it.tax) +
-      '</td><td class="n">' + f2(e) + '</td><td class="n">' + f2(g) + '</td><td><button class="sec mini" data-del="' + i + '">✕</button></td>';
+      '</td><td class="n">' + f2(e) + '</td><td class="n">' + f2(g) + '</td><td>' +
+      (it.done ? '<span class="ok" title="in the sheet">✔</span>' : it.q ? '…' : '<button class="sec mini" data-del="' + i + '">✕</button>') + '</td>';
     lb.appendChild(tr);
   });
   if (items.length) {
     var tr = document.createElement('tr'); tr.className = 'tot';
-    tr.innerHTML = '<td>Total</td><td></td><td></td><td></td><td class="n">' + f2(ex) + '</td><td class="n">' + f2(inc) + '</td><td></td>';
+    tr.innerHTML = '<td>Total (✔ = already in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(ex) + '</td><td class="n">' + f2(inc) + '</td><td></td>';
     lb.appendChild(tr);
   }
   $('lt').style.display = items.length ? '' : 'none';
   $('lempty').style.display = items.length ? 'none' : '';
   $('cnt').textContent = items.length ? '(' + items.length + ' line' + (items.length > 1 ? 's' : '') + ')' : '';
-  $('put').disabled = !items.length;
+  var pend = items.filter(function (it) { return !it.done && !it.q; }).length;
+  $('put').disabled = !pend;
+  $('put').textContent = pend ? 'Put ' + pend + ' line(s) in sheet' : 'Put in sheet';
 }
 
 function setMsg(html) { $('msg').innerHTML = html; }
 
-function putInSheet() {
-  $('put').disabled = true; setMsg('Writing…');
+// Writes go one after the other (each appends below the last line of the sheet), so fast clicks cannot overlap.
+var wq = [], writing = false;
+function writeItems(arr) {
+  arr = arr.filter(function (it) { return !it.done && !it.q; });
+  if (!arr.length) return;
+  arr.forEach(function (it) { it.q = true; });
+  wq.push(arr); renderList(); pump();
+}
+function pump() {
+  if (writing || !wq.length) return;
+  writing = true; var arr = wq.shift();
+  setMsg('Writing ' + arr.length + ' line(s)…');
   google.script.run
     .withSuccessHandler(function (r) {
-      var n = items.length; items = []; renderList();
-      setMsg('<span class="ok">✔ ' + n + ' line(s) put in the sheet, rows ' + r.first + '–' + r.last + '.</span>');
+      arr.forEach(function (it) { it.done = true; it.q = false; });
+      writing = false; renderList();
+      setMsg('<span class="ok">✔ ' + arr.length + ' line(s) in the sheet, rows ' + r.first + '–' + r.last + '.</span>');
+      pump();
     })
-    .withFailureHandler(function (e) { $('put').disabled = false; setMsg('<span class="err">' + esc(e.message) + '</span>'); })
-    .lpWrite(items.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax }; }));
+    .withFailureHandler(function (e) {
+      arr.forEach(function (it) { it.q = false; });
+      wq.forEach(function (a) { a.forEach(function (it) { it.q = false; }); }); wq = [];   // keep order: the rest stay in the list
+      writing = false; renderList();
+      setMsg('<span class="err">Not written: ' + esc(e.message) + ' (the lines are still in the list)</span>');
+    })
+    .lpWrite(arr.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax }; }));
 }
+function putInSheet() { writeItems(items); }
 
 function download() {
   $('dl').disabled = true; setMsg('Making the file…'); $('dlbox').innerHTML = '';
@@ -325,7 +350,9 @@ $('vb').addEventListener('click', function (e) {
   var left = Math.round((qKg - other) * 1e6) / 1e6;
   if (left > 0) { kgs[c] = String(left); var inp = document.querySelector('input[data-c="' + CSS.escape(c) + '"]'); if (inp) inp.value = kgs[c]; recalc(); }
 });
-$('lb').addEventListener('click', function (e) { var i = e.target.getAttribute('data-del'); if (i === null) return; items.splice(Number(i), 1); renderList(); });
+$('lb').addEventListener('click', function (e) { var i = e.target.getAttribute('data-del'); if (i === null) return; if (items[Number(i)] && !items[Number(i)].done && !items[Number(i)].q) items.splice(Number(i), 1); renderList(); });
+try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } catch (e) {}
+$('fast').addEventListener('change', function () { try { localStorage.setItem('lp_fast', $('fast').checked ? '1' : '0'); } catch (e) {} });
 $('add').addEventListener('click', addToList);
 $('put').addEventListener('click', putInSheet);
 $('dl').addEventListener('click', download);
