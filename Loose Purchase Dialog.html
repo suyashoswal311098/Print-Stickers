@@ -26,6 +26,8 @@
   button.mini { padding: 2px 8px; font-size: 12px; }
   button:disabled { opacity: .45; cursor: default; }
   .radio { flex-direction: row; align-items: center; gap: 4px; font-weight: normal; font-size: 13px; }
+  .grp { display: block; width: 100%; text-align: left; background: #fff; color: #202124; border: 1px solid #c8d3e3; margin-bottom: 4px; padding: 6px 10px; }
+  .grp.sel { background: #e8f0fe; border-color: #1f3d66; font-weight: bold; }
   .tot td { font-weight: bold; border-top: 2px solid #999; }
 </style>
 </head>
@@ -38,6 +40,7 @@
     <label>Quantity bought <input type="text" id="qty" placeholder="10kg" autocomplete="off"></label>
   </div>
   <div id="hint" class="muted">Loading products…</div>
+  <div id="groups" style="margin:6px 0"></div>
   <table id="vt" style="display:none">
     <thead><tr><th>Pack size</th><th>Product</th><th class="n">NPP</th><th class="n">kg for this size</th><th class="n">Packs</th><th></th></tr></thead>
     <tbody id="vb"></tbody>
@@ -124,18 +127,27 @@ function f2(x) { return (Math.round(x * 100) / 100).toLocaleString('en-IN', { mi
 function numOf(id) { var v = $(id).value.replace(/,/g, '').trim(); return v !== '' && isFinite(v) ? Number(v) : NaN; }
 function qtyG() { return parseSum($('qty').value, true) || parseSum($('q').value, false); }
 
+var groups = [], selGroup = '';
+// A product matches when every typed word is the START of a word in its name (so "wa" finds Walnut, not Ajwa).
+// Matching products are grouped by name without the size; you pick one group, its sizes are the rows to split.
 function findCands() {
   var toks = searchTokens($('q').value);
-  cands = []; noSize = 0;
-  if (!loaded || !toks.length) return;
+  cands = []; noSize = 0; groups = [];
+  if (!loaded || !toks.length) { selGroup = ''; return; }
+  var by = {};
   P.forEach(function (p) {
-    var up = p.up;
-    for (var i = 0; i < toks.length; i++) if (up.indexOf(toks[i]) < 0) return;
+    for (var i = 0; i < toks.length; i++) {
+      var ok = false;
+      for (var w = 0; w < p.words.length; w++) if (p.words[w].indexOf(toks[i]) === 0) { ok = true; break; }
+      if (!ok) return;
+    }
     if (!(p.g > 0)) { noSize++; return; }
-    cands.push(p);
+    (by[p.base] = by[p.base] || []).push(p);
   });
-  cands.sort(function (a, b) { return a.g - b.g; });
-  if (cands.length > 40) cands = cands.slice(0, 40);
+  Object.keys(by).sort().forEach(function (k) { by[k].sort(function (a, b) { return a.g - b.g; }); groups.push({ base: k, items: by[k] }); });
+  if (groups.length === 1) selGroup = groups[0].base;
+  if (!groups.some(function (g) { return g.base === selGroup; })) selGroup = '';
+  groups.forEach(function (g) { if (g.base === selGroup) cands = g.items.slice(0, 40); });
 }
 
 function renderVariants() {
@@ -144,8 +156,15 @@ function renderVariants() {
   var hint = $('hint');
   if (!loaded) hint.textContent = 'Loading products…';
   else if (!searchTokens($('q').value).length) hint.textContent = 'Type the product name. Sizes (200g, 1kg…) are found automatically; a size typed here (…walnut 40kg) is used as the quantity.';
-  else if (!cands.length) hint.innerHTML = '<span class="err">No product with a pack size matches these words.</span>' + (noSize ? ' (' + noSize + ' match without a size in the name)' : '');
-  else hint.textContent = cands.length + ' pack size(s) found' + (noSize ? ' (+' + noSize + ' match without a size in the name, not used)' : '') + '. Type how many kg go to each size.';
+  else if (!groups.length) hint.innerHTML = '<span class="err">No product with a pack size matches these words.</span>' + (noSize ? ' (' + noSize + ' match without a size in the name)' : '');
+  else if (!cands.length) hint.textContent = groups.length + ' products match - click the one you bought.' + (noSize ? ' (+' + noSize + ' match without a size in the name, not used)' : '');
+  else hint.textContent = cands.length + ' pack size(s) of this product. Type how many kg go to each size.' + (noSize ? ' (+' + noSize + ' other match without a size in the name, not used)' : '');
+  var gb = $('groups'); gb.innerHTML = '';
+  if (groups.length > 1) groups.forEach(function (g) {
+    var b = document.createElement('button'); b.className = 'grp' + (g.base === selGroup ? ' sel' : ''); b.setAttribute('data-g', g.base);
+    b.innerHTML = esc(g.items[0].name.replace(SIZE_RE, ' ').replace(/\s+/g, ' ').trim()) + ' <span class="muted">— ' + g.items.map(function (p) { return sizeLabel(p.g); }).join(', ') + '</span>';
+    gb.appendChild(b);
+  });
   $('vt').style.display = cands.length ? '' : 'none';
   cands.forEach(function (p) {
     var tr = document.createElement('tr');
@@ -186,7 +205,8 @@ function recalc() {
   else if (left > 0) rem.innerHTML = '<span class="err">' + sumKg + ' kg of ' + qKg + ' kg split - ' + left + ' kg left.</span>';
   else rem.innerHTML = '<span class="err">' + sumKg + ' kg is MORE than ' + qKg + ' kg (by ' + (-left) + ' kg).</span>';
 
-  if (!searchTokens($('q').value).length || !cands.length) errs.unshift('Choose a product');
+  if (!searchTokens($('q').value).length || !groups.length) errs.unshift('Choose a product');
+  else if (!cands.length) errs.unshift('Click the product you bought');
   if (!qG) errs.push('Quantity missing');
   else if (cands.length && left !== 0) errs.push(left > 0 ? left + ' kg still to split' : 'split is more than the quantity');
   if (cands.length && !rows.length && qG) errs.push('Give kg to at least one size');
@@ -293,6 +313,10 @@ $('rate').addEventListener('input', recalc);
 $('unit').addEventListener('change', recalc);
 $('tax').addEventListener('change', recalc);
 Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r.addEventListener('change', recalc); });
+$('groups').addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('[data-g]') : null; if (!b) return;
+  selGroup = b.getAttribute('data-g'); kgs = {}; renderVariants();
+});
 $('vb').addEventListener('input', function (e) { var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; recalc(); } });
 $('vb').addEventListener('click', function (e) {
   var c = e.target.getAttribute('data-fill'); if (!c) return;
@@ -311,7 +335,7 @@ document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !$(
 $('q').addEventListener('blur', function () { if (!$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; recalc(); } } });
 
 function init(d) {
-  P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]) }; });
+  P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
   d.taxes.forEach(function (t) { TAX[t[0]] = t[1]; });
   var sel = $('tax'); sel.innerHTML = '<option value="">– choose –</option>';
   d.taxes.forEach(function (t) { var o = document.createElement('option'); o.value = t[0]; o.textContent = t[0] + '  (' + t[1] + '%)'; sel.appendChild(o); });
