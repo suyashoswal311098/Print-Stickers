@@ -149,6 +149,7 @@ function pcNum_(v) {
 
 // Reads the sheet → {rows: [{code,cost,qty,variant,tax,disc,exp,row}], problems: ['Row 7: …']}
 function pcCollect_() {
+  SpreadsheetApp.flush();   // formulas in the header row must be calculated before reading B / C
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
   if (!sh) return { rows: [], problems: ['The "' + PC_SHEET_ + '" sheet does not exist - run Set up / repair sheet first.'] };
   const n = sh.getLastRow() - PC_FIRST_ + 1;
@@ -232,28 +233,33 @@ function pcCheck() {
 // The POS page accepts .xlsx only ("Invalid file selected. Only .xlsx file is allowed"), so there is no CSV download.
 function pcExportXlsx() { pcExport_('xlsx'); }
 
-function pcExport_(kind) {
-  const ui = SpreadsheetApp.getUi();
+// Builds the .xlsx in Drive (temp file) from the sheet. Returns {problems:[…]} | {empty:true} | {name,url,fileId,count}.
+function pcMakeFile_() {
   const res = pcCollect_();
-  if (res.problems.length) {
-    ui.alert('Nothing downloaded - please fix', res.problems.slice(0, 15).join('\n') +
-      (res.problems.length > 15 ? '\n…and ' + (res.problems.length - 15) + ' more' : ''), ui.ButtonSet.OK);
-    return;
-  }
-  if (!res.rows.length) { ui.alert('There are no lines to download.'); return; }
-
+  if (res.problems.length) return { problems: res.problems };
+  if (!res.rows.length) return { empty: true };
   const aoa = pcAoa_(res.rows);
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
-  const name = 'Purchase_' + stamp + '.' + kind;
-  const blob = Utilities.newBlob(pcXlsxBytes_(aoa), PC_XLSX_MIME_, name);
-  const file = DriveApp.createFile(blob);
+  const name = 'Purchase_' + stamp + '.xlsx';
+  const file = DriveApp.createFile(Utilities.newBlob(pcXlsxBytes_(aoa), PC_XLSX_MIME_, name));
   const fileId = file.getId();
   scheduleExportCleanup_(fileId);   // same temp-file clean-up as Export Products to XLS
+  return { name: name, url: file.getDownloadUrl(), fileId: fileId, count: res.rows.length };
+}
 
+function pcExport_() {
+  const ui = SpreadsheetApp.getUi();
+  const r = pcMakeFile_();
+  if (r.problems) {
+    ui.alert('Nothing downloaded - please fix', r.problems.slice(0, 15).join('\n') +
+      (r.problems.length > 15 ? '\n…and ' + (r.problems.length - 15) + ' more' : ''), ui.ButtonSet.OK);
+    return;
+  }
+  if (r.empty) { ui.alert('There are no lines to download.'); return; }
   const html = HtmlService.createHtmlOutput(
     '<div style="font-family:Arial,sans-serif;font-size:13px;padding:10px;">'
-    + '<p><b>' + res.rows.length + '</b> purchase line(s) ready for the POS.</p>'
-    + '<p><a id="dl" href="' + file.getDownloadUrl() + '" target="_blank">Download ' + name + '</a></p>'
+    + '<p><b>' + r.count + '</b> purchase line(s) ready for the POS.</p>'
+    + '<p><a id="dl" href="' + r.url + '" target="_blank">Download ' + r.name + '</a></p>'
     + '<p style="color:#555;font-size:12px;">POS → Purchases → Add Purchase by CSV → Browse → pick this file.</p>'
     + '<p id="msg" style="color:#777;font-size:11px;">The file is removed from Drive 15 seconds after you click the link.</p>'
     + '<script>'
@@ -265,7 +271,7 @@ function pcExport_(kind) {
     + '      google.script.run'
     + '        .withSuccessHandler(function(){ m.textContent = "Removed from Drive."; })'
     + '        .withFailureHandler(function(e){ m.textContent = "Could not remove: " + e.message; })'
-    + '        .deleteExportFile("' + fileId + '"); }'
+    + '        .deleteExportFile("' + r.fileId + '"); }'
     + '  }, 1000);'
     + '});'
     + '<\/script></div>'

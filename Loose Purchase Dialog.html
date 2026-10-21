@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; font-size: 13px; margin: 0; padding: 12px; color: #202124; }
+  .card { border: 1px solid #dadce0; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  h3 { margin: 0 0 8px; font-size: 14px; color: #1f3d66; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 8px; }
+  label { display: flex; flex-direction: column; font-weight: bold; font-size: 12px; gap: 3px; }
+  input[type=text], select { font-size: 14px; padding: 6px 8px; border: 1px solid #aaa; border-radius: 4px; }
+  #q { width: 360px; } #qty { width: 120px; } #rate { width: 120px; }
+  table { border-collapse: collapse; width: 100%; }
+  th { background: #4a86c8; color: #fff; padding: 5px 6px; text-align: left; font-size: 12px; }
+  td { border-bottom: 1px solid #e3e3e3; padding: 4px 6px; }
+  td.n, th.n { text-align: right; }
+  .kg { width: 90px; text-align: right; }
+  .muted { color: #777; font-size: 12px; }
+  .err { color: #c00; font-weight: bold; }
+  .ok { color: #1e8e3e; font-weight: bold; }
+  .calc { background: #fff8e1; border: 1px solid #f0d98a; border-radius: 6px; padding: 8px 10px; margin: 8px 0; line-height: 1.6; }
+  button { font-size: 13px; padding: 7px 14px; border: 1px solid #1f3d66; background: #1f3d66; color: #fff; border-radius: 4px; cursor: pointer; }
+  button.sec { background: #fff; color: #1f3d66; }
+  button.mini { padding: 2px 8px; font-size: 12px; }
+  button:disabled { opacity: .45; cursor: default; }
+  .radio { flex-direction: row; align-items: center; gap: 4px; font-weight: normal; font-size: 13px; }
+  .tot td { font-weight: bold; border-top: 2px solid #999; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h3>1. What did you buy (loose)?</h3>
+  <div class="row">
+    <label>Product (name, no size) <input type="text" id="q" placeholder="e.g. premium jumbo walnut" autocomplete="off"></label>
+    <label>Quantity bought <input type="text" id="qty" placeholder="10kg" autocomplete="off"></label>
+  </div>
+  <div id="hint" class="muted">Loading products…</div>
+  <table id="vt" style="display:none">
+    <thead><tr><th>Pack size</th><th>Product</th><th class="n">NPP</th><th class="n">kg for this size</th><th class="n">Packs</th><th></th></tr></thead>
+    <tbody id="vb"></tbody>
+  </table>
+  <div id="rem" style="margin-top:6px"></div>
+</div>
+
+<div class="card">
+  <h3>2. Rate and tax</h3>
+  <div class="row">
+    <label>Rate <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
+    <label>Rate is
+      <select id="unit"><option value="kg">per kg</option><option value="all">for the whole quantity</option></select></label>
+    <label>Tax Rate Code <select id="tax"></select></label>
+    <div>
+      <label class="radio"><input type="radio" name="inc" value="incl"> Rate INCLUDES tax</label>
+      <label class="radio"><input type="radio" name="inc" value="excl"> Rate EXCLUDES tax (add tax on top)</label>
+    </div>
+  </div>
+  <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
+  <div id="errs" class="err"></div>
+  <button id="add" disabled>Add to list ⏎</button>
+</div>
+
+<div class="card">
+  <h3>3. List for the sheet <span id="cnt" class="muted"></span></h3>
+  <table id="lt" style="display:none">
+    <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Cost / pack (ex tax)</th><th>Tax</th><th class="n">Total ex tax</th><th class="n">Total incl tax</th><th></th></tr></thead>
+    <tbody id="lb"></tbody>
+  </table>
+  <div id="lempty" class="muted">Nothing yet. Fill step 1 and 2, then click “Add to list”. You can add many products.</div>
+  <div style="margin-top:10px" class="row">
+    <button id="put" disabled>Put in sheet</button>
+    <button id="dl" class="sec">⬇ Download XLSX for POS</button>
+    <span id="msg"></span>
+  </div>
+  <div id="dlbox" style="margin-top:6px"></div>
+</div>
+
+<script>
+// ---------- pure helpers (also run in node for testing) ----------
+// number + unit anywhere in a text: 200g, 200 gm, 1kg, .5 kg, 10 KGS …
+var SIZE_RE = /(\d*\.?\d+)\s*(KILOGRAMS?|KILOS?|KGS?|GRAMS?|GRMS?|GMS?|G)(?![A-Z])/gi;
+function unitG(u) { return /^K/i.test(u) ? 1000 : 1; }
+// Sum of all sizes in a text ("10kg 500g" = 10500). Plain number only (qtyMode) = kg.
+function parseSum(text, qtyMode) {
+  var s = String(text || ''), g = 0, found = false, m;
+  SIZE_RE.lastIndex = 0;
+  while ((m = SIZE_RE.exec(s))) { g += parseFloat(m[1]) * unitG(m[2]); found = true; }
+  if (!found && qtyMode && /^\s*(\d*\.?\d+)\s*$/.test(s)) { g = parseFloat(s) * 1000; found = true; }
+  return found ? g : 0;
+}
+// Pack size of a product name = the LAST size in it (grams), 0 if none.
+function sizeOfName(name) {
+  var s = String(name || ''), g = 0, m;
+  SIZE_RE.lastIndex = 0;
+  while ((m = SIZE_RE.exec(s))) g = parseFloat(m[1]) * unitG(m[2]);
+  return g;
+}
+function stripSizes(text) { return String(text || '').replace(SIZE_RE, ' ').replace(/\s+/g, ' ').trim(); }
+function searchTokens(text) {
+  return stripSizes(text).toUpperCase().split(/[\s,]+/).filter(Boolean).map(function (t) {
+    return (t.length > 3 && /S$/.test(t)) ? t.slice(0, -1) : t;   // walnuts -> walnut
+  });
+}
+function sizeLabel(g) { return g >= 1000 ? (g / 1000) + ' kg' : g + ' g'; }
+function round4(x) { return Math.round(x * 10000) / 10000; }
+// Rate maths. rate: typed number, perKg: true = rate is per kg else for the whole qty,
+// incl: rate includes tax, taxPct: tax %, qtyKg. Returns {exKg, inclKg} (per kg, 4 decimals).
+function rateMath(rate, perKg, incl, taxPct, qtyKg) {
+  var perKgRate = perKg ? rate : rate / qtyKg;
+  var ex = incl ? perKgRate / (1 + taxPct / 100) : perKgRate;
+  return { exKg: ex, inclKg: ex * (1 + taxPct / 100) };
+}
+// ---------- end pure helpers ----------
+
+var P = [], TAX = {}, defTax = '', loaded = false;
+var cands = [], noSize = 0, kgs = {}, items = [];
+var $ = function (id) { return document.getElementById(id); };
+
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+function f2(x) { return (Math.round(x * 100) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function numOf(id) { var v = $(id).value.replace(/,/g, '').trim(); return v !== '' && isFinite(v) ? Number(v) : NaN; }
+function qtyG() { return parseSum($('qty').value, true) || parseSum($('q').value, false); }
+
+function findCands() {
+  var toks = searchTokens($('q').value);
+  cands = []; noSize = 0;
+  if (!loaded || !toks.length) return;
+  P.forEach(function (p) {
+    var up = p.up;
+    for (var i = 0; i < toks.length; i++) if (up.indexOf(toks[i]) < 0) return;
+    if (!(p.g > 0)) { noSize++; return; }
+    cands.push(p);
+  });
+  cands.sort(function (a, b) { return a.g - b.g; });
+  if (cands.length > 40) cands = cands.slice(0, 40);
+}
+
+function renderVariants() {
+  findCands();
+  var vb = $('vb'); vb.innerHTML = '';
+  var hint = $('hint');
+  if (!loaded) hint.textContent = 'Loading products…';
+  else if (!searchTokens($('q').value).length) hint.textContent = 'Type the product name. Sizes (200g, 1kg…) are found automatically; a size typed here (…walnut 40kg) is used as the quantity.';
+  else if (!cands.length) hint.innerHTML = '<span class="err">No product with a pack size matches these words.</span>' + (noSize ? ' (' + noSize + ' match without a size in the name)' : '');
+  else hint.textContent = cands.length + ' pack size(s) found' + (noSize ? ' (+' + noSize + ' match without a size in the name, not used)' : '') + '. Type how many kg go to each size.';
+  $('vt').style.display = cands.length ? '' : 'none';
+  cands.forEach(function (p) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><b>' + esc(sizeLabel(p.g)) + '</b></td><td>' + esc(p.name) + '</td><td class="n">' + (p.npp === '' ? '–' : f2(p.npp)) +
+      '</td><td class="n"><input type="text" class="kg" data-c="' + esc(p.code) + '" value="' + esc(kgs[p.code] || '') + '" placeholder="kg"></td>' +
+      '<td class="n" data-pk="' + esc(p.code) + '"></td><td><button class="sec mini" data-fill="' + esc(p.code) + '" title="Put all the remaining kg here">rest ↵</button></td>';
+    vb.appendChild(tr);
+  });
+  recalc();
+}
+
+// returns the plan (or errors) and refreshes the live numbers
+function recalc() {
+  var errs = [], rows = [], sumKg = 0;
+  var qG = qtyG(), qKg = qG / 1000;
+  cands.forEach(function (p) {
+    var raw = (kgs[p.code] || '').trim();
+    var g = raw === '' ? 0 : (parseSum(raw, true));
+    var cell = document.querySelector('[data-pk="' + CSS.escape(p.code) + '"]');
+    if (raw !== '' && !g) { if (cell) cell.innerHTML = '<span class="err">?</span>'; errs.push('Cannot read "' + raw + '" for ' + sizeLabel(p.g)); return; }
+    if (!g) { if (cell) cell.textContent = ''; return; }
+    var kg = g / 1000, rawPk = g / p.g, pk = Math.round(rawPk);
+    sumKg += kg;
+    if (Math.abs(rawPk - pk) > 1e-6) {
+      if (cell) cell.innerHTML = '<span class="err">' + (Math.round(rawPk * 100) / 100) + '</span>';
+      errs.push(sizeLabel(p.g) + ': ' + kg + ' kg = ' + (Math.round(rawPk * 100) / 100) + ' packs - use whole packs');
+    } else {
+      if (cell) cell.textContent = pk;
+      rows.push({ p: p, kg: kg, packs: pk });
+    }
+  });
+  sumKg = Math.round(sumKg * 1e6) / 1e6;
+  var left = Math.round((qKg - sumKg) * 1e6) / 1e6;
+  var rem = $('rem');
+  if (!cands.length) rem.textContent = '';
+  else if (!qG) rem.innerHTML = '<span class="err">Type the quantity bought (e.g. 10kg).</span>';
+  else if (left === 0) rem.innerHTML = '<span class="ok">✔ ' + qKg + ' kg fully split.</span>';
+  else if (left > 0) rem.innerHTML = '<span class="err">' + sumKg + ' kg of ' + qKg + ' kg split - ' + left + ' kg left.</span>';
+  else rem.innerHTML = '<span class="err">' + sumKg + ' kg is MORE than ' + qKg + ' kg (by ' + (-left) + ' kg).</span>';
+
+  if (!searchTokens($('q').value).length || !cands.length) errs.unshift('Choose a product');
+  if (!qG) errs.push('Quantity missing');
+  else if (cands.length && left !== 0) errs.push(left > 0 ? left + ' kg still to split' : 'split is more than the quantity');
+  if (cands.length && !rows.length && qG) errs.push('Give kg to at least one size');
+
+  // rate + tax calculator
+  var rate = numOf('rate'), inc = (document.querySelector('input[name=inc]:checked') || {}).value, taxCode = $('tax').value;
+  var calc = $('calc'), math = null;
+  if (isNaN(rate) || rate <= 0) errs.push('Rate missing');
+  if (!inc) errs.push('Choose: rate includes tax or excludes tax');
+  if (!taxCode) errs.push('Choose the Tax Rate Code');
+  if (!isNaN(rate) && rate > 0 && inc && taxCode && qG) {
+    var t = TAX[taxCode];
+    math = rateMath(rate, $('unit').value === 'kg', inc === 'incl', t, qKg);
+    var tot = math.exKg * qKg;
+    calc.className = 'calc';
+    calc.innerHTML = 'Tax ' + esc(taxCode) + ' = <b>' + t + '%</b> &nbsp;|&nbsp; per kg: <b>' + f2(math.exKg) + '</b> before tax, <b>' + f2(math.inclKg) + '</b> with tax' +
+      '<br>For ' + qKg + ' kg: <b>' + f2(tot) + '</b> before tax + tax <b>' + f2(tot * t / 100) + '</b> = <b>' + f2(tot * (1 + t / 100)) + '</b> total' +
+      (rows.length ? '<br>' + rows.map(function (r) { return sizeLabel(r.p.g) + ' pack: ' + f2(round4(math.exKg * r.p.g / 1000)) + ' ex tax'; }).join(' &nbsp;·&nbsp; ') : '');
+  } else {
+    calc.className = 'calc muted';
+    calc.textContent = 'Type the rate, choose including / excluding tax and the tax code.';
+  }
+  $('errs').textContent = errs.join(' · ');
+  $('add').disabled = errs.length > 0 || !math;
+  return (errs.length || !math) ? null : { rows: rows, math: math, tax: taxCode, t: TAX[taxCode] };
+}
+
+function addToList() {
+  var pl = recalc();
+  if (!pl) return;
+  pl.rows.forEach(function (r) {
+    var cost = round4(pl.math.exKg * r.p.g / 1000);
+    items.push({ dd: r.p.dd, name: r.p.name, packs: r.packs, cost: cost, tax: pl.tax, t: pl.t });
+  });
+  kgs = {}; $('q').value = ''; $('qty').value = ''; $('rate').value = '';   // keep rate unit, incl/excl, tax for the next product
+  renderVariants(); renderList();
+  $('q').focus();
+}
+
+function renderList() {
+  var lb = $('lb'); lb.innerHTML = '';
+  var ex = 0, inc = 0;
+  items.forEach(function (it, i) {
+    var e = it.packs * it.cost, g = e * (1 + it.t / 100);
+    ex += e; inc += g;
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(it.cost) + '</td><td>' + esc(it.tax) +
+      '</td><td class="n">' + f2(e) + '</td><td class="n">' + f2(g) + '</td><td><button class="sec mini" data-del="' + i + '">✕</button></td>';
+    lb.appendChild(tr);
+  });
+  if (items.length) {
+    var tr = document.createElement('tr'); tr.className = 'tot';
+    tr.innerHTML = '<td>Total</td><td></td><td></td><td></td><td class="n">' + f2(ex) + '</td><td class="n">' + f2(inc) + '</td><td></td>';
+    lb.appendChild(tr);
+  }
+  $('lt').style.display = items.length ? '' : 'none';
+  $('lempty').style.display = items.length ? 'none' : '';
+  $('cnt').textContent = items.length ? '(' + items.length + ' line' + (items.length > 1 ? 's' : '') + ')' : '';
+  $('put').disabled = !items.length;
+}
+
+function setMsg(html) { $('msg').innerHTML = html; }
+
+function putInSheet() {
+  $('put').disabled = true; setMsg('Writing…');
+  google.script.run
+    .withSuccessHandler(function (r) {
+      var n = items.length; items = []; renderList();
+      setMsg('<span class="ok">✔ ' + n + ' line(s) put in the sheet, rows ' + r.first + '–' + r.last + '.</span>');
+    })
+    .withFailureHandler(function (e) { $('put').disabled = false; setMsg('<span class="err">' + esc(e.message) + '</span>'); })
+    .lpWrite(items.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax }; }));
+}
+
+function download() {
+  $('dl').disabled = true; setMsg('Making the file…'); $('dlbox').innerHTML = '';
+  google.script.run
+    .withSuccessHandler(function (r) {
+      $('dl').disabled = false;
+      if (r.problems) { setMsg('<span class="err">Fix first:</span> ' + esc(r.problems.slice(0, 8).join(' | '))); return; }
+      if (r.empty) { setMsg('<span class="err">The sheet has no lines yet.</span>'); return; }
+      setMsg('');
+      $('dlbox').innerHTML = '<b>' + r.count + '</b> line(s): <a id="dla" href="' + esc(r.url) + '" target="_blank">Download ' + esc(r.name) + '</a> <span id="dlm" class="muted">(removed from Drive 15 s after you click)</span>';
+      $('dla').addEventListener('click', function () {
+        var n = 15, m = $('dlm');
+        var t = setInterval(function () {
+          n--; m.textContent = 'Removing from Drive in ' + n + 's...';
+          if (n <= 0) { clearInterval(t); google.script.run.withSuccessHandler(function () { m.textContent = 'Removed from Drive.'; }).deleteExportFile(r.fileId); }
+        }, 1000);
+      });
+    })
+    .withFailureHandler(function (e) { $('dl').disabled = false; setMsg('<span class="err">' + esc(e.message) + '</span>'); })
+    .lpDownload();
+}
+
+// ---------- wiring ----------
+var qTimer = null;
+$('q').addEventListener('input', function () {
+  // a size typed after the name ("walnut 40kg") becomes the quantity when the quantity box is empty
+  clearTimeout(qTimer); qTimer = setTimeout(renderVariants, 120);
+});
+$('qty').addEventListener('input', recalc);
+$('rate').addEventListener('input', recalc);
+$('unit').addEventListener('change', recalc);
+$('tax').addEventListener('change', recalc);
+Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r.addEventListener('change', recalc); });
+$('vb').addEventListener('input', function (e) { var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; recalc(); } });
+$('vb').addEventListener('click', function (e) {
+  var c = e.target.getAttribute('data-fill'); if (!c) return;
+  var qKg = qtyG() / 1000, other = 0;
+  cands.forEach(function (p) { if (p.code !== c) other += (parseSum(kgs[p.code] || '', true) || 0) / 1000; });
+  var left = Math.round((qKg - other) * 1e6) / 1e6;
+  if (left > 0) { kgs[c] = String(left); var inp = document.querySelector('input[data-c="' + CSS.escape(c) + '"]'); if (inp) inp.value = kgs[c]; recalc(); }
+});
+$('lb').addEventListener('click', function (e) { var i = e.target.getAttribute('data-del'); if (i === null) return; items.splice(Number(i), 1); renderList(); });
+$('add').addEventListener('click', addToList);
+$('put').addEventListener('click', putInSheet);
+$('dl').addEventListener('click', download);
+document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !$('add').disabled && e.target.tagName === 'INPUT') { e.preventDefault(); addToList(); } });
+
+// a size typed in the product box and no quantity yet: show it as the quantity hint
+$('q').addEventListener('blur', function () { if (!$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; recalc(); } } });
+
+function init(d) {
+  P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]) }; });
+  d.taxes.forEach(function (t) { TAX[t[0]] = t[1]; });
+  var sel = $('tax'); sel.innerHTML = '<option value="">– choose –</option>';
+  d.taxes.forEach(function (t) { var o = document.createElement('option'); o.value = t[0]; o.textContent = t[0] + '  (' + t[1] + '%)'; sel.appendChild(o); });
+  if (d.defTax && TAX[d.defTax] !== undefined) sel.value = d.defTax;
+  loaded = true; renderVariants();
+}
+if (window.google && google.script) {
+  google.script.run.withSuccessHandler(init).withFailureHandler(function (e) { $('hint').innerHTML = '<span class="err">' + esc(e.message) + '</span>'; }).lpGetData();
+}
+$('q').focus();
+renderList();
+</script>
+</body>
+</html>

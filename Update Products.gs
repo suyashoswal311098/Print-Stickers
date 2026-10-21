@@ -639,6 +639,7 @@ function onOpen() {
     .addItem('Export Products to XLS', 'exportProductsToXlsx')
     .addSeparator()
     .addSubMenu(SpreadsheetApp.getUi().createMenu('Purchase CSV for POS')
+      .addItem('Add loose purchase…', 'openLoosePurchase')
       .addItem('Set up / repair sheet', 'setupPurchaseSheet')
       .addItem('Check lines', 'pcCheck')
       .addItem('Download XLSX for POS', 'pcExportXlsx')
