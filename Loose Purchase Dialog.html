@@ -15,9 +15,9 @@
   .seg { display: flex; } .seg label { flex-direction: row; font-size: 13px; font-weight: bold; margin: 0; padding: 6px 8px; border: 1px solid #1f3d66; color: #1f3d66; cursor: pointer; background: #fff; }
   .seg label:first-child { border-radius: 4px 0 0 4px; } .seg label:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
   .seg input { position: absolute; opacity: 0; width: 0; height: 0; } .seg label { position: relative; } .seg label.on { background: #1f3d66; color: #fff; }
-  #main { display: flex; gap: 10px; min-height: 0; flex: 0 1 auto; max-height: 48%; }
-  #left { flex: 1 1 60%; min-width: 0; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; padding: 6px 8px; }
-  #right { flex: 1 1 40%; min-width: 250px; display: flex; flex-direction: column; gap: 6px; }
+  #main { display: flex; gap: 10px; min-height: 0; flex: none; height: 330px; }
+  #left { flex: 1 1 58%; min-width: 0; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; padding: 6px 8px; }
+  #right { flex: 1 1 42%; min-width: 270px; display: flex; flex-direction: column; gap: 6px; }
   #listbox { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; border: 1px solid #dadce0; border-radius: 8px; padding: 6px 8px; }
   #listscroll { flex: 1; overflow: auto; min-height: 0; }
   table { border-collapse: collapse; width: 100%; }
@@ -40,6 +40,10 @@
   .grp.sel { background: #e8f0fe; border-color: #1f3d66; font-weight: bold; }
   .tot td { font-weight: bold; border-top: 2px solid #999; }
   .editing td { background: #fff8e1; }
+  .chip { display: inline-block; background: #fdecea; color: #b3261e; border: 1px solid #f3b8b3; border-radius: 12px; padding: 1px 9px; margin: 0 4px 4px 0; font-size: 12px; font-weight: normal; }
+  .chip.good { background: #e6f4ea; color: #1e7e34; border-color: #a8d5b5; }
+  button.go { background: #1e7e34; border-color: #145a25; font-size: 17px; font-weight: bold; padding: 12px 14px; width: 100%; }
+  button.go:disabled { background: #9aa5b1; border-color: #9aa5b1; }
   .bar { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 </style>
 </head>
@@ -67,11 +71,9 @@
   </div>
   <div id="right">
     <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
-    <div id="errs" class="err" style="font-size:12px"></div>
-    <div class="bar" style="margin:0">
-      <button id="add" class="big" disabled>Add to list ⏎</button>
-      <label class="radio"><input type="checkbox" id="fast" checked> Fast: put in sheet at once</label>
-    </div>
+    <div id="errs" style="min-height:44px;max-height:70px;overflow:auto"></div>
+    <button id="add" class="go" disabled>＋ Add to list &nbsp;<span style="font-weight:normal;font-size:12px">(Enter)</span></button>
+    <label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label>
   </div>
 </div>
 
@@ -249,7 +251,7 @@ function recalc() {
     calc.className = 'calc muted';
     calc.textContent = 'Type the rate, choose including / excluding tax and the tax code.';
   }
-  $('errs').textContent = errs.join(' · ');
+  $('errs').innerHTML = errs.length ? errs.map(function (m) { return '<span class="chip">' + esc(m) + '</span>'; }).join('') : '<span class="chip good">✔ Ready - press Enter or click Add to list</span>';
   $('add').disabled = errs.length > 0 || !math;
   return (errs.length || !math) ? null : { rows: rows, math: math, tax: taxCode, t: TAX[taxCode] };
 }
