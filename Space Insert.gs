@@ -2,13 +2,7 @@ function onEdit(e) {
   const range = e.range;
   const sheet = range.getSheet();
   const ss = e.source;
-
-  // Purchase CSV sheet: picking a product in column A fills its code, cost and default tax
-  if (sheet.getName() === 'Purchase CSV') {
-    try { pcOnEdit_(e); } catch (err) { ss.toast('Purchase CSV: ' + err.message, 'Error', 5); }
-    return;
-  }
-
+  
   // 1) Only proceed if it really was a check in Print Console!K2
   if (
     sheet.getName() !== 'Print Console' ||

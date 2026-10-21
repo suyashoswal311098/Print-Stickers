@@ -1,10 +1,12 @@
 /***** PURCHASE CSV — build the POS "Add Purchase by CSV" file from the Product List *****
  * Sheet "Purchase CSV": pick a product in column A (dropdown = the Print Console B2 list, "barcode name",
- * type to search). The script fills Product Code (text, leading zeros kept) + Net Unit Cost (NPP from
- * Product List). You type Quantity, optionally Variant / Tax Rate Code / Discount / Expiry.
+ * type to search). FORMULAS IN THE HEADER ROW (no script on edit) fill Product Code (the barcode in front
+ * of the picked text, so leading zeros stay) + Net Unit Cost (NPP from Product List, or the Cost override
+ * in column K). You type Quantity, optionally Variant / Tax Rate Code / Discount / Expiry.
+ * Tax Rate Code left empty = the Default Tax Rate Code in B2 (applied in the file).
  * Menu Product Tools → Purchase CSV for POS → Download XLSX / CSV gives a file with exactly the POS columns:
  *   Product Code | Net Unit Cost | Quantity | Product Variant | Tax Rate Code | Discount | Expiry
- * Sheet columns: A Product | B..H = the 7 POS columns | I Amount (info) | J Check (info)
+ * Sheet columns: A Product | B..H = the 7 POS columns | I Amount (info) | J Check (info) | K Cost override (optional)
  */
 
 const PC_SHEET_ = 'Purchase CSV';
@@ -55,45 +57,49 @@ function setupPurchaseSheet() {
   if (sh.getMaxColumns() < 10) sh.insertColumnsAfter(sh.getMaxColumns(), 10 - sh.getMaxColumns());
 
   sh.getRange('A1').setValue('PURCHASE FILE FOR POS  (Add Purchase by CSV)').setFontSize(14).setFontWeight('bold');
-  sh.getRange('A2').setValue('Default Tax Rate Code for newly picked products  →').setHorizontalAlignment('right').setFontWeight('bold');
+  sh.getRange('A2').setValue('Default Tax Rate Code (used when Tax Rate Code is empty)  →').setHorizontalAlignment('right').setFontWeight('bold');
   sh.getRange('B2').setDataValidation(SpreadsheetApp.newDataValidation()
     .requireValueInList(pcTaxCodes_(), true).setAllowInvalid(false).build()).setBackground('#fff2cc');
   sh.getRange('G2').setValue('Total amount').setHorizontalAlignment('right').setFontWeight('bold');
   sh.getRange('H2').setFormula('=SUM(I' + PC_FIRST_ + ':I' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
-  sh.getRange('A3').setValue('Pick/type a product in column A. Columns B–H go into the file exactly in the POS order; ' +
-    'Amount and Check are only for you. Menu: Product Tools → Purchase CSV for POS.').setFontColor('#666');
+  sh.getRange('A3').setValue('Pick/type a product in column A and type Quantity. B, C, I, J are formulas in the header row (do not type there). ' +
+    'B–H go into the file in the POS order; Amount, Check and Cost override are only for you.').setFontColor('#666');
 
-  // headers
-  sh.getRange(PC_HEAD_ROW_, 1, 1, 10).setValues([['Product (barcode + name)'].concat(PC_HEADERS_, ['Amount (info)', 'Check (info)'])])
-    .setBackground('#4a86c8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  // Header row: plain labels, except B, C, I, J = label + ONE array formula that fills the whole column.
+  // Spill cells below must be empty, so old values/formulas in those columns are cleared first.
+  [2, 3, 9, 10].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());
+  const A = 'A' + PC_FIRST_ + ':A' + lastRow, B = 'B' + PC_FIRST_ + ':B' + lastRow, C = 'C' + PC_FIRST_ + ':C' + lastRow;
+  const D = 'D' + PC_FIRST_ + ':D' + lastRow, K = 'K' + PC_FIRST_ + ':K' + lastRow;
+  const bars = "'Product List'!$B$2:$B&\"\"";
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 11).setNumberFormat('General');
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 11).setValues([['Product (barcode + name)'].concat(PC_HEADERS_, ['', '', 'Cost override (optional)'])]);
+  sh.getRange(PC_HEAD_ROW_, 2).setFormula('={"Product Code";ARRAYFORMULA(IF(' + A + '="","",IFERROR(REGEXEXTRACT(' + A + '&"","^\\S+"),"")))}');
+  sh.getRange(PC_HEAD_ROW_, 3).setFormula('={"Net Unit Cost";ARRAYFORMULA(IF(' + B + '="","",IF(' + K + '<>"",' + K + ',IFERROR(VLOOKUP(' + B +
+    ',{' + bars + ",'Product List'!$E$2:$E},2,FALSE),\"\"))))}");
+  sh.getRange(PC_HEAD_ROW_, 9).setFormula('={"Amount (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),' + C + '*' + D + ',""))}');
+  sh.getRange(PC_HEAD_ROW_, 10).setFormula('={"Check (info)";ARRAYFORMULA(IF(' + A + '="","",IF(ISNA(VLOOKUP(' + B + ',{' + bars + ',' + bars + '},2,FALSE)),"⚠ not in Product List",' +
+    'IF(NOT(ISNUMBER(' + D + ')),"⚠ type Quantity",IF(' + D + '<=0,"⚠ Quantity must be above 0",IF(NOT(ISNUMBER(' + C + ')),"⚠ no cost - type a Cost override","✔ ok"))))))}');
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 11).setBackground('#4a86c8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
   sh.getRange(PC_HEAD_ROW_, 1).setBackground('#1f3d66');
-  sh.getRange(PC_HEAD_ROW_, 9, 1, 2).setBackground('#7f7f7f');
+  sh.getRange(PC_HEAD_ROW_, 9, 1, 3).setBackground('#7f7f7f');
   sh.setFrozenRows(PC_HEAD_ROW_);
 
-  // formats: code + variant + discount as plain text (leading zeros, "5%" stay as typed)
-  sh.getRange(PC_FIRST_, 2, PC_ROWS_, 1).setNumberFormat('@');
+  // formats: variant + discount + expiry as plain text ("5%" stays as typed); code/cost come from the formulas
+  sh.getRange(PC_FIRST_, 2, PC_ROWS_, 1).setNumberFormat('General');
   sh.getRange(PC_FIRST_, 5, PC_ROWS_, 1).setNumberFormat('@');
   sh.getRange(PC_FIRST_, 7, PC_ROWS_, 1).setNumberFormat('@');
   sh.getRange(PC_FIRST_, 3, PC_ROWS_, 1).setNumberFormat('0.00');
   sh.getRange(PC_FIRST_, 4, PC_ROWS_, 1).setNumberFormat('0.##');
   sh.getRange(PC_FIRST_, 8, PC_ROWS_, 1).setNumberFormat('@');
   sh.getRange(PC_FIRST_, 9, PC_ROWS_, 1).setNumberFormat('#,##0.00');
+  sh.getRange(PC_FIRST_, 11, PC_ROWS_, 1).setNumberFormat('0.00');
 
   // dropdowns
   sh.getRange(PC_FIRST_, 1, PC_ROWS_, 1).setDataValidation(rule);
   sh.getRange(PC_FIRST_, 6, PC_ROWS_, 1).setDataValidation(SpreadsheetApp.newDataValidation()
     .requireValueInList(pcTaxCodes_(), true).setAllowInvalid(false).build());
 
-  // info columns
-  const fI = [], fJ = [];
-  for (let r = PC_FIRST_; r <= lastRow; r++) {
-    fI.push(['=IF(AND(ISNUMBER(C' + r + '),ISNUMBER(D' + r + ')),C' + r + '*D' + r + ',"")']);
-    fJ.push(['=IF(A' + r + '="","",IF(B' + r + '="","⚠ not in Product List",IF(NOT(ISNUMBER(D' + r + ')),"⚠ type Quantity",' +
-      'IF(D' + r + '<=0,"⚠ Quantity must be above 0",IF(NOT(ISNUMBER(C' + r + ')),"⚠ type Net Unit Cost","✔ ok")))))']);
-  }
-  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 1).setFormulas(fI);
-  sh.getRange(PC_FIRST_, 10, PC_ROWS_, 1).setFormulas(fJ);
-  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 2).setFontColor('#666');
+  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 3).setFontColor('#666');
   sh.getRange(PC_FIRST_, 2, PC_ROWS_, 7).setHorizontalAlignment('left');
 
   const jr = sh.getRange(PC_FIRST_, 10, PC_ROWS_, 1);
@@ -103,7 +109,7 @@ function setupPurchaseSheet() {
   ]);
 
   sh.setColumnWidth(1, 380);
-  [110, 95, 75, 100, 110, 80, 95, 95, 190].forEach((w, i) => sh.setColumnWidth(i + 2, w));
+  [110, 95, 75, 100, 110, 80, 95, 95, 230, 120].forEach((w, i) => sh.setColumnWidth(i + 2, w));
   sh.activate();
   sh.getRange(PC_FIRST_, 1).activate();
   ss.toast(isNew ? 'Purchase CSV sheet created.' : 'Purchase CSV sheet checked / repaired (your lines were kept).', 'Purchase CSV', 5);
@@ -134,32 +140,6 @@ function pcIndex_() {
   };
 }
 
-// Called from onEdit (Space Insert.gs): when column A changes, fill Product Code, cost and default tax.
-function pcOnEdit_(e) {
-  const rg = e.range, sh = rg.getSheet();
-  const c0 = rg.getColumn(), c1 = c0 + rg.getNumColumns() - 1;
-  const r0 = Math.max(rg.getRow(), PC_FIRST_), r1 = Math.min(rg.getRow() + rg.getNumRows() - 1, PC_FIRST_ + PC_ROWS_ - 1);
-  if (c0 > 1 || c1 < 1 || r1 < r0) return;
-  const n = r1 - r0 + 1;
-  const a = sh.getRange(r0, 1, n, 1).getValues();
-  const bc = sh.getRange(r0, 2, n, 2).getValues();
-  const f = sh.getRange(r0, 6, n, 1).getValues();
-  const defTax = String(sh.getRange('B2').getValue() || '').trim();
-  const lookup = a.some(r => String(r[0]).trim()) ? pcIndex_() : null;
-  let missing = 0;
-  a.forEach((r, i) => {
-    const t = String(r[0]).trim();
-    if (!t) { bc[i] = ['', '']; return; }
-    const p = lookup(t);
-    if (!p) { bc[i] = ['', '']; missing++; return; }
-    bc[i] = [p.code, p.cost];
-    if (defTax && !String(f[i][0]).trim()) f[i][0] = defTax;
-  });
-  sh.getRange(r0, 2, n, 2).setValues(bc);
-  sh.getRange(r0, 6, n, 1).setValues(f);
-  if (missing) e.source.toast(missing + ' product(s) not found in Product List.', 'Purchase CSV', 4);
-}
-
 function pcNum_(v) {
   if (typeof v === 'number') return v;
   const s = String(v == null ? '' : v).trim();
@@ -176,20 +156,21 @@ function pcCollect_() {
   const code = sh.getRange(PC_FIRST_, 2, n, 1).getDisplayValues();
   const tz = Session.getScriptTimeZone();
   const taxOk = pcTaxCodes_();
+  const defTax = String(sh.getRange('B2').getValue() || '').trim();
   let lookup = null;
   const rows = [], problems = [];
   v.forEach((r, i) => {
     const row = PC_FIRST_ + i;
     const prod = String(r[0]).trim();
     let c = String(code[i][0]).trim();
-    if (!prod && !c && r[2] === '' && r[3] === '') return;
-    if (!c && prod) { lookup = lookup || pcIndex_(); const p = lookup(prod); if (p) c = p.code; }
+    if (!prod && r[3] === '') return;
+    if (c) { lookup = lookup || pcIndex_(); const p = lookup(c); if (p) c = p.code; else c = ''; }   // code must exist in Product List
     const cost = pcNum_(r[2]), qty = pcNum_(r[3]);
-    const tax = String(r[5]).trim();
+    const tax = String(r[5]).trim() || defTax;
     const bad = [];
     if (!c) bad.push(prod ? 'product not found in Product List' : 'no product');
     if (isNaN(qty) || qty <= 0) bad.push('Quantity must be a number above 0');
-    if (isNaN(cost) || cost < 0) bad.push('Net Unit Cost must be a number');
+    if (isNaN(cost) || cost < 0) bad.push('Net Unit Cost is empty (no NPP in Product List - type a Cost override in column K)');
     if (tax && taxOk.indexOf(tax) < 0) bad.push('Tax Rate Code "' + tax + '" is not a POS code');
     if (bad.length) { problems.push('Row ' + row + ': ' + bad.join('; ')); return; }
     const exp = r[7] instanceof Date ? Utilities.formatDate(r[7], tz, PC_EXPIRY_FORMAT_) : String(r[7]).trim();
@@ -298,7 +279,7 @@ function pcClearRows() {
   const ui = SpreadsheetApp.getUi();
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
   if (!sh) return;
-  if (ui.alert('Clear all purchase lines?', 'This empties columns A–H on "' + PC_SHEET_ + '" (rows ' + PC_FIRST_ + ' down).',
+  if (ui.alert('Clear all purchase lines?', 'This empties Product, Quantity, Variant, Tax, Discount, Expiry and Cost override on "' + PC_SHEET_ + '" (rows ' + PC_FIRST_ + ' down). The formulas stay.',
     ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
-  sh.getRange(PC_FIRST_, 1, PC_ROWS_, 8).clearContent();
+  [1, 4, 5, 6, 7, 8, 11].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());
 }
