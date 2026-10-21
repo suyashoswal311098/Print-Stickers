@@ -81,7 +81,7 @@
   <div><b style="color:#1f3d66">List for the sheet</b> <span id="cnt" class="muted"></span></div>
   <div id="listscroll">
     <table id="lt" style="display:none">
-      <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Cost/pack ex tax</th><th>Tax</th><th class="n">Total ex tax</th><th class="n">Total incl tax</th><th></th></tr></thead>
+      <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Net Unit Cost (incl tax)</th><th>Tax</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th></th></tr></thead>
       <tbody id="lb"></tbody>
     </table>
     <div id="lempty" class="muted">Nothing yet. Fill the top row, give the kg per size, then “Add to list” (or press Enter).</div>
@@ -246,7 +246,7 @@ function recalc() {
     calc.className = 'calc';
     calc.innerHTML = 'Tax ' + esc(taxCode) + ' = <b>' + t + '%</b> &nbsp;|&nbsp; per kg: <b>' + f2(math.exKg) + '</b> before tax, <b>' + f2(math.inclKg) + '</b> with tax' +
       '<br>For ' + qKg + ' kg: <b>' + f2(tot) + '</b> before tax + tax <b>' + f2(tot * t / 100) + '</b> = <b>' + f2(tot * (1 + t / 100)) + '</b> total' +
-      (rows.length ? '<br>' + rows.map(function (r) { return sizeLabel(r.p.g) + ' pack: ' + f2(round4(math.exKg * r.p.g / 1000)) + ' ex tax'; }).join(' &nbsp;·&nbsp; ') : '');
+      (rows.length ? '<br>' + rows.map(function (r) { return sizeLabel(r.p.g) + ' pack: <b>' + f2(round4(math.inclKg * r.p.g / 1000)) + '</b> incl tax'; }).join(' &nbsp;·&nbsp; ') : '');
   } else {
     calc.className = 'calc muted';
     calc.textContent = 'Type the rate, choose including / excluding tax and the tax code.';
@@ -272,30 +272,33 @@ function addToList() {
 }
 
 var editIdx = -1;
+// Net Unit Cost per pack INCLUDING tax, exactly as the sheet stores it (server pcInclCost_: 4 decimals)
+function inclOf(it) { return round4(it.cost * (1 + it.t / 100)); }
+
 function renderList() {
   var lb = $('lb'); lb.innerHTML = '';
   var ex = 0, inc = 0;
   items.forEach(function (it, i) {
-    var e = it.packs * it.cost, g = e * (1 + it.t / 100);
+    var ci = inclOf(it), g = it.packs * ci, e = g / (1 + it.t / 100);   // same as the sheet: C, I, N
     ex += e; inc += g;
     var tr = document.createElement('tr');
     if (i === editIdx) {
       tr.className = 'editing';
       var opts = Object.keys(TAX).map(function (k) { return '<option' + (k === it.tax ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
-      tr.innerHTML = '<td>' + esc(it.dd) + '</td><td class="n"><input type="text" class="ed" id="ePk" value="' + it.packs + '"></td><td class="n"><input type="text" class="ed" id="eCost" value="' + it.cost + '"></td>' +
+      tr.innerHTML = '<td>' + esc(it.dd) + '</td><td class="n"><input type="text" class="ed" id="ePk" value="' + it.packs + '"></td><td class="n"><input type="text" class="ed" id="eCost" value="' + ci + '" title="Net Unit Cost INCLUDING tax"></td>' +
         '<td><select id="eTax">' + opts + '</select></td><td colspan="2" class="muted" id="eErr"></td>' +
         '<td style="white-space:nowrap"><button class="mini" data-save="' + i + '">✔ Save</button> <button class="sec mini" data-cancel="1">✕</button></td>';
     } else {
       var act = it.q ? '…' : '<button class="sec mini" data-edit="' + i + '" title="Change packs / cost / tax">✎</button> ' +
         (it.sure ? '<button class="mini" data-del="' + i + '">sure?</button>' : '<button class="sec mini" data-del="' + i + '" title="Remove' + (it.done ? ' (empties its row in the sheet)' : '') + '">✕</button>');
-      tr.innerHTML = '<td>' + (it.done ? '<span class="ok" title="in the sheet">✔</span> ' : '') + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(it.cost) + '</td><td>' + esc(it.tax) +
-        '</td><td class="n">' + f2(e) + '</td><td class="n">' + f2(g) + '</td><td style="white-space:nowrap">' + act + '</td>';
+      tr.innerHTML = '<td>' + (it.done ? '<span class="ok" title="in the sheet">✔</span> ' : '') + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(ci) + '</td><td>' + esc(it.tax) +
+        '</td><td class="n">' + f2(g) + '</td><td class="n">' + f2(e) + '</td><td style="white-space:nowrap">' + act + '</td>';
     }
     lb.appendChild(tr);
   });
   if (items.length) {
     var tr = document.createElement('tr'); tr.className = 'tot';
-    tr.innerHTML = '<td>Total (✔ = in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(ex) + '</td><td class="n">' + f2(inc) + '</td><td></td>';
+    tr.innerHTML = '<td>Total (✔ = in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(inc) + '</td><td class="n">' + f2(ex) + '</td><td></td>';
     lb.appendChild(tr);
   }
   $('lt').style.display = items.length ? '' : 'none';
@@ -312,6 +315,7 @@ function saveEdit(i) {
   var pk = Number($('ePk').value.replace(/,/g, '')), cost = Number($('eCost').value.replace(/,/g, '')), tax = $('eTax').value;
   if (!(pk > 0) || Math.round(pk) !== pk) { $('eErr').innerHTML = '<span class="err">Packs: whole number above 0</span>'; return; }
   if (!(cost >= 0) || $('eCost').value.trim() === '') { $('eErr').innerHTML = '<span class="err">Cost: a number</span>'; return; }
+  cost = cost / (1 + TAX[tax] / 100);   // typed = incl tax; the window keeps ex tax, the sheet gets incl again
   var apply = function () { it.packs = pk; it.cost = cost; it.tax = tax; it.t = TAX[tax]; editIdx = -1; renderList(); };
   if (!it.done) { apply(); return; }
   it.q = true; setMsg('Updating the sheet…');
@@ -345,7 +349,7 @@ function writeItems(arr) {
 function pump() {
   if (writing || !wq.length) return;
   writing = true; var arr = wq.shift();
-  setMsg('Writing ' + arr.length + ' line(s)…');
+  setMsg('Writing ' + arr.length + ' line(s) to the sheet… (Google can take 5–20 s; lines without ✔ are still on the way)');
   google.script.run
     .withSuccessHandler(function (r) {
       arr.forEach(function (it, k) { it.done = true; it.q = false; it.row = r.first + k; });
