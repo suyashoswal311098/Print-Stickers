@@ -1,0 +1,304 @@
+/***** PURCHASE CSV — build the POS "Add Purchase by CSV" file from the Product List *****
+ * Sheet "Purchase CSV": pick a product in column A (dropdown = the Print Console B2 list, "barcode name",
+ * type to search). The script fills Product Code (text, leading zeros kept) + Net Unit Cost (NPP from
+ * Product List). You type Quantity, optionally Variant / Tax Rate Code / Discount / Expiry.
+ * Menu Product Tools → Purchase CSV for POS → Download XLSX / CSV gives a file with exactly the POS columns:
+ *   Product Code | Net Unit Cost | Quantity | Product Variant | Tax Rate Code | Discount | Expiry
+ * Sheet columns: A Product | B..H = the 7 POS columns | I Amount (info) | J Check (info)
+ */
+
+const PC_SHEET_ = 'Purchase CSV';
+const PC_TAX_SHEET_ = 'POS Tax Codes';
+const PC_HEAD_ROW_ = 4;
+const PC_FIRST_ = 5;
+const PC_ROWS_ = 500;
+const PC_HEADERS_ = ['Product Code', 'Net Unit Cost', 'Quantity', 'Product Variant', 'Tax Rate Code', 'Discount', 'Expiry'];
+// POS "TAX RATE CODE" window (Name, Code, Tax Rate, Type). The CODE is what goes in the file.
+const PC_TAX_CODES_ = [
+  ['0%GST', '0%GST', 0, 1],
+  ['18%GST', '18%GST', 18, 1],
+  ['05%GST', '05%GST', 5, 1],
+  ['5%GST', '12%GST', 5, 1],
+  ['5% GST', '28%GST', 5, 1]
+];
+const PC_EXPIRY_FORMAT_ = 'yyyy-MM-dd';   // how a date typed in Expiry is written to the file
+const PC_XLSX_MIME_ = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+function pcTaxCodes_() { return PC_TAX_CODES_.map(t => t[1]); }
+
+// Creates (or repairs, without clearing typed lines) the Purchase CSV + POS Tax Codes sheets.
+function setupPurchaseSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const work = ss.getSheetByName('Print Console');
+  const rule = work && work.getRange('B2').getDataValidation();
+  if (!rule) { ui.alert("Print Console B2 has no product dropdown, so the Product dropdown cannot be copied."); return; }
+
+  // POS tax code reference
+  let tx = ss.getSheetByName(PC_TAX_SHEET_) || ss.insertSheet(PC_TAX_SHEET_);
+  tx.clear();
+  tx.getRange(1, 1, 1, 4).setValues([['Name', 'Code', 'Tax Rate', 'Type']])
+    .setBackground('#4a86c8').setFontColor('#ffffff').setFontWeight('bold');
+  tx.getRange(2, 1, PC_TAX_CODES_.length, 4).setNumberFormat('@').setValues(PC_TAX_CODES_.map(r => r.map(String)));
+  tx.getRange(2, 3, PC_TAX_CODES_.length, 1).setNumberFormat('0.0000');
+  tx.getRange(2, 3, PC_TAX_CODES_.length, 1).setValues(PC_TAX_CODES_.map(r => [r[2]]));
+  tx.getRange(8, 1).setValue('Copy of the POS "TAX RATE CODE" window. The file uses the CODE column. ' +
+    'Note: in the POS, code 12%GST has rate 5 and code 28%GST has rate 5 - fix them in the POS if that is not intended.')
+    .setFontColor('#a33').setWrap(false);
+  tx.setColumnWidths(1, 4, 110);
+
+  // Purchase sheet
+  const isNew = !ss.getSheetByName(PC_SHEET_);
+  const sh = ss.getSheetByName(PC_SHEET_) || ss.insertSheet(PC_SHEET_);
+  const lastRow = PC_FIRST_ + PC_ROWS_ - 1;
+  if (sh.getMaxRows() < lastRow) sh.insertRowsAfter(sh.getMaxRows(), lastRow - sh.getMaxRows());
+  if (sh.getMaxColumns() < 10) sh.insertColumnsAfter(sh.getMaxColumns(), 10 - sh.getMaxColumns());
+
+  sh.getRange('A1').setValue('PURCHASE FILE FOR POS  (Add Purchase by CSV)').setFontSize(14).setFontWeight('bold');
+  sh.getRange('A2').setValue('Default Tax Rate Code for newly picked products  →').setHorizontalAlignment('right').setFontWeight('bold');
+  sh.getRange('B2').setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(pcTaxCodes_(), true).setAllowInvalid(false).build()).setBackground('#fff2cc');
+  sh.getRange('G2').setValue('Total amount').setHorizontalAlignment('right').setFontWeight('bold');
+  sh.getRange('H2').setFormula('=SUM(I' + PC_FIRST_ + ':I' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
+  sh.getRange('A3').setValue('Pick/type a product in column A. Columns B–H go into the file exactly in the POS order; ' +
+    'Amount and Check are only for you. Menu: Product Tools → Purchase CSV for POS.').setFontColor('#666');
+
+  // headers
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 10).setValues([['Product (barcode + name)'].concat(PC_HEADERS_, ['Amount (info)', 'Check (info)'])])
+    .setBackground('#4a86c8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  sh.getRange(PC_HEAD_ROW_, 1).setBackground('#1f3d66');
+  sh.getRange(PC_HEAD_ROW_, 9, 1, 2).setBackground('#7f7f7f');
+  sh.setFrozenRows(PC_HEAD_ROW_);
+
+  // formats: code + variant + discount as plain text (leading zeros, "5%" stay as typed)
+  sh.getRange(PC_FIRST_, 2, PC_ROWS_, 1).setNumberFormat('@');
+  sh.getRange(PC_FIRST_, 5, PC_ROWS_, 1).setNumberFormat('@');
+  sh.getRange(PC_FIRST_, 7, PC_ROWS_, 1).setNumberFormat('@');
+  sh.getRange(PC_FIRST_, 3, PC_ROWS_, 1).setNumberFormat('0.00');
+  sh.getRange(PC_FIRST_, 4, PC_ROWS_, 1).setNumberFormat('0.##');
+  sh.getRange(PC_FIRST_, 8, PC_ROWS_, 1).setNumberFormat('@');
+  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 1).setNumberFormat('#,##0.00');
+
+  // dropdowns
+  sh.getRange(PC_FIRST_, 1, PC_ROWS_, 1).setDataValidation(rule);
+  sh.getRange(PC_FIRST_, 6, PC_ROWS_, 1).setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(pcTaxCodes_(), true).setAllowInvalid(false).build());
+
+  // info columns
+  const fI = [], fJ = [];
+  for (let r = PC_FIRST_; r <= lastRow; r++) {
+    fI.push(['=IF(AND(ISNUMBER(C' + r + '),ISNUMBER(D' + r + ')),C' + r + '*D' + r + ',"")']);
+    fJ.push(['=IF(A' + r + '="","",IF(B' + r + '="","⚠ not in Product List",IF(NOT(ISNUMBER(D' + r + ')),"⚠ type Quantity",' +
+      'IF(D' + r + '<=0,"⚠ Quantity must be above 0",IF(NOT(ISNUMBER(C' + r + ')),"⚠ type Net Unit Cost","✔ ok")))))']);
+  }
+  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 1).setFormulas(fI);
+  sh.getRange(PC_FIRST_, 10, PC_ROWS_, 1).setFormulas(fJ);
+  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 2).setFontColor('#666');
+  sh.getRange(PC_FIRST_, 2, PC_ROWS_, 7).setHorizontalAlignment('left');
+
+  const jr = sh.getRange(PC_FIRST_, 10, PC_ROWS_, 1);
+  sh.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenTextStartsWith('⚠').setFontColor('#cc0000').setBold(true).setRanges([jr]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenTextStartsWith('✔').setFontColor('#1e8e3e').setRanges([jr]).build()
+  ]);
+
+  sh.setColumnWidth(1, 380);
+  [110, 95, 75, 100, 110, 80, 95, 95, 190].forEach((w, i) => sh.setColumnWidth(i + 2, w));
+  sh.activate();
+  sh.getRange(PC_FIRST_, 1).activate();
+  ss.toast(isNew ? 'Purchase CSV sheet created.' : 'Purchase CSV sheet checked / repaired (your lines were kept).', 'Purchase CSV', 5);
+}
+
+// Product List lookup: dropdown text ("<barcode> <name>", plain name, or plain barcode) → {code, name, cost}.
+// Code = Product List column B as displayed (leading zeros kept), cost = NPP (column E).
+function pcIndex_() {
+  const list = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Product List');
+  const n = Math.max(list.getLastRow() - 1, 1);
+  const bn = list.getRange(2, 2, n, 2).getDisplayValues();
+  const npp = list.getRange(2, 5, n, 1).getValues();
+  const sq = s => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().toUpperCase();
+  const byName = {}, byBar = {};
+  bn.forEach((r, i) => {
+    const v = { code: String(r[0]).trim(), name: sq(r[1]), cost: npp[i][0] === '' ? '' : Number(npp[i][0]) };
+    if (v.name && !byName[v.name]) byName[v.name] = v;
+    const bk = normBar_(r[0]);
+    if (bk && !byBar[bk]) byBar[bk] = v;
+  });
+  return function lookup(text) {
+    const full = sq(text);
+    if (!full) return null;
+    const m = full.match(/^(\S+)\s+(.+)$/);
+    const p = m && byBar[normBar_(m[1])];
+    if (p && (!p.name || p.name === m[2])) return p;
+    return byName[full] || byBar[normBar_(full)] || null;
+  };
+}
+
+// Called from onEdit (Space Insert.gs): when column A changes, fill Product Code, cost and default tax.
+function pcOnEdit_(e) {
+  const rg = e.range, sh = rg.getSheet();
+  const c0 = rg.getColumn(), c1 = c0 + rg.getNumColumns() - 1;
+  const r0 = Math.max(rg.getRow(), PC_FIRST_), r1 = Math.min(rg.getRow() + rg.getNumRows() - 1, PC_FIRST_ + PC_ROWS_ - 1);
+  if (c0 > 1 || c1 < 1 || r1 < r0) return;
+  const n = r1 - r0 + 1;
+  const a = sh.getRange(r0, 1, n, 1).getValues();
+  const bc = sh.getRange(r0, 2, n, 2).getValues();
+  const f = sh.getRange(r0, 6, n, 1).getValues();
+  const defTax = String(sh.getRange('B2').getValue() || '').trim();
+  const lookup = a.some(r => String(r[0]).trim()) ? pcIndex_() : null;
+  let missing = 0;
+  a.forEach((r, i) => {
+    const t = String(r[0]).trim();
+    if (!t) { bc[i] = ['', '']; return; }
+    const p = lookup(t);
+    if (!p) { bc[i] = ['', '']; missing++; return; }
+    bc[i] = [p.code, p.cost];
+    if (defTax && !String(f[i][0]).trim()) f[i][0] = defTax;
+  });
+  sh.getRange(r0, 2, n, 2).setValues(bc);
+  sh.getRange(r0, 6, n, 1).setValues(f);
+  if (missing) e.source.toast(missing + ' product(s) not found in Product List.', 'Purchase CSV', 4);
+}
+
+function pcNum_(v) {
+  if (typeof v === 'number') return v;
+  const s = String(v == null ? '' : v).trim();
+  return s !== '' && isFinite(s) ? Number(s) : NaN;
+}
+
+// Reads the sheet → {rows: [{code,cost,qty,variant,tax,disc,exp,row}], problems: ['Row 7: …']}
+function pcCollect_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
+  if (!sh) return { rows: [], problems: ['The "' + PC_SHEET_ + '" sheet does not exist - run Set up / repair sheet first.'] };
+  const n = sh.getLastRow() - PC_FIRST_ + 1;
+  if (n <= 0) return { rows: [], problems: [] };
+  const v = sh.getRange(PC_FIRST_, 1, n, 8).getValues();
+  const code = sh.getRange(PC_FIRST_, 2, n, 1).getDisplayValues();
+  const tz = Session.getScriptTimeZone();
+  const taxOk = pcTaxCodes_();
+  let lookup = null;
+  const rows = [], problems = [];
+  v.forEach((r, i) => {
+    const row = PC_FIRST_ + i;
+    const prod = String(r[0]).trim();
+    let c = String(code[i][0]).trim();
+    if (!prod && !c && r[2] === '' && r[3] === '') return;
+    if (!c && prod) { lookup = lookup || pcIndex_(); const p = lookup(prod); if (p) c = p.code; }
+    const cost = pcNum_(r[2]), qty = pcNum_(r[3]);
+    const tax = String(r[5]).trim();
+    const bad = [];
+    if (!c) bad.push(prod ? 'product not found in Product List' : 'no product');
+    if (isNaN(qty) || qty <= 0) bad.push('Quantity must be a number above 0');
+    if (isNaN(cost) || cost < 0) bad.push('Net Unit Cost must be a number');
+    if (tax && taxOk.indexOf(tax) < 0) bad.push('Tax Rate Code "' + tax + '" is not a POS code');
+    if (bad.length) { problems.push('Row ' + row + ': ' + bad.join('; ')); return; }
+    const exp = r[7] instanceof Date ? Utilities.formatDate(r[7], tz, PC_EXPIRY_FORMAT_) : String(r[7]).trim();
+    rows.push({ row: row, code: c, cost: cost, qty: qty, variant: String(r[4]).trim(), tax: tax, disc: String(r[6]).trim(), exp: exp });
+  });
+  return { rows: rows, problems: problems };
+}
+
+// Array of arrays in the POS column order; blanks are null; Discount stays text if it has a % sign.
+function pcAoa_(rows) {
+  const out = [PC_HEADERS_.slice()];
+  rows.forEach(r => {
+    const d = r.disc === '' ? null : (/^\d+(\.\d+)?$/.test(r.disc) ? Number(r.disc) : r.disc);
+    out.push([r.code, r.cost, r.qty, r.variant || null, r.tax || null, d, r.exp || null]);
+  });
+  return out;
+}
+
+// Real .xlsx: Product Code / Variant are text cells (leading zeros kept). Returns signed bytes for Apps Script.
+function pcXlsxBytes_(aoa) {
+  const lib = sheetJs_();
+  const ws = lib.utils.aoa_to_sheet(aoa);
+  for (let r = 2; r <= aoa.length; r++) {
+    ['A', 'D', 'E', 'G'].forEach(col => {
+      const c = ws[col + r];
+      if (c) { c.t = 's'; c.v = String(c.v); c.z = '@'; delete c.w; }
+    });
+  }
+  const wb = lib.utils.book_new();
+  lib.utils.book_append_sheet(wb, ws, 'Sheet1');
+  const u8 = new Uint8Array(lib.write(wb, { bookType: 'xlsx', type: 'array' }));
+  return Array.prototype.map.call(u8, b => b > 127 ? b - 256 : b);
+}
+
+// UTF-8 CSV, no BOM (the POS asks for that), comma separated, quotes only where needed.
+function pcCsv_(aoa) {
+  const cell = v => {
+    if (v === null || v === undefined) return '';
+    const s = String(v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  return aoa.map(r => r.map(cell).join(',')).join('\r\n') + '\r\n';
+}
+
+function pcCheck() {
+  const ui = SpreadsheetApp.getUi();
+  const res = pcCollect_();
+  if (res.problems.length) {
+    ui.alert('Purchase CSV: please fix', res.problems.slice(0, 15).join('\n') +
+      (res.problems.length > 15 ? '\n…and ' + (res.problems.length - 15) + ' more' : ''), ui.ButtonSet.OK);
+  } else if (!res.rows.length) {
+    ui.alert('Purchase CSV', 'No lines yet. Pick a product in column A and type the Quantity.', ui.ButtonSet.OK);
+  } else {
+    ui.alert('Purchase CSV', '✔ ' + res.rows.length + ' line(s) are ready to download.', ui.ButtonSet.OK);
+  }
+}
+
+function pcExportXlsx() { pcExport_('xlsx'); }
+function pcExportCsv() { pcExport_('csv'); }
+
+function pcExport_(kind) {
+  const ui = SpreadsheetApp.getUi();
+  const res = pcCollect_();
+  if (res.problems.length) {
+    ui.alert('Nothing downloaded - please fix', res.problems.slice(0, 15).join('\n') +
+      (res.problems.length > 15 ? '\n…and ' + (res.problems.length - 15) + ' more' : ''), ui.ButtonSet.OK);
+    return;
+  }
+  if (!res.rows.length) { ui.alert('There are no lines to download.'); return; }
+
+  const aoa = pcAoa_(res.rows);
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
+  const name = 'Purchase_' + stamp + '.' + kind;
+  const blob = kind === 'xlsx'
+    ? Utilities.newBlob(pcXlsxBytes_(aoa), PC_XLSX_MIME_, name)
+    : Utilities.newBlob(pcCsv_(aoa), 'text/csv', name);
+  const file = DriveApp.createFile(blob);
+  const fileId = file.getId();
+  scheduleExportCleanup_(fileId);   // same temp-file clean-up as Export Products to XLS
+
+  const html = HtmlService.createHtmlOutput(
+    '<div style="font-family:Arial,sans-serif;font-size:13px;padding:10px;">'
+    + '<p><b>' + res.rows.length + '</b> purchase line(s) ready for the POS.</p>'
+    + '<p><a id="dl" href="' + file.getDownloadUrl() + '" target="_blank">Download ' + name + '</a></p>'
+    + '<p style="color:#555;font-size:12px;">POS → Purchases → Add Purchase by CSV → Browse → pick this file.</p>'
+    + '<p id="msg" style="color:#777;font-size:11px;">The file is removed from Drive 15 seconds after you click the link.</p>'
+    + '<script>'
+    + 'document.getElementById("dl").addEventListener("click", function(){'
+    + '  var n = 15; var m = document.getElementById("msg");'
+    + '  var t = setInterval(function(){'
+    + '    n--; m.textContent = "Removing from Drive in " + n + "s...";'
+    + '    if (n <= 0) { clearInterval(t);'
+    + '      google.script.run'
+    + '        .withSuccessHandler(function(){ m.textContent = "Removed from Drive."; })'
+    + '        .withFailureHandler(function(e){ m.textContent = "Could not remove: " + e.message; })'
+    + '        .deleteExportFile("' + fileId + '"); }'
+    + '  }, 1000);'
+    + '});'
+    + '<\/script></div>'
+  ).setWidth(400).setHeight(230);
+  ui.showModalDialog(html, 'Purchase file ready');
+}
+
+// Clears the typed lines (columns A–H, rows 5 down); keeps the formulas, dropdowns and the default tax.
+function pcClearRows() {
+  const ui = SpreadsheetApp.getUi();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
+  if (!sh) return;
+  if (ui.alert('Clear all purchase lines?', 'This empties columns A–H on "' + PC_SHEET_ + '" (rows ' + PC_FIRST_ + ' down).',
+    ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  sh.getRange(PC_FIRST_, 1, PC_ROWS_, 8).clearContent();
+}

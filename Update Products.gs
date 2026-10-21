@@ -638,6 +638,14 @@ function onOpen() {
     .addSeparator()
     .addItem('Export Products to XLS', 'exportProductsToXlsx')
     .addSeparator()
+    .addSubMenu(SpreadsheetApp.getUi().createMenu('Purchase CSV for POS')
+      .addItem('Set up / repair sheet', 'setupPurchaseSheet')
+      .addItem('Check lines', 'pcCheck')
+      .addItem('Download XLSX for POS', 'pcExportXlsx')
+      .addItem('Download CSV for POS', 'pcExportCsv')
+      .addSeparator()
+      .addItem('Clear all lines', 'pcClearRows'))
+    .addSeparator()
     .addItem(
       'Auto-apply zero-only barcode changes: ' + (zeroAutoIsOn_() ? 'ON' : 'OFF'),
       'toggleZeroAuto'
