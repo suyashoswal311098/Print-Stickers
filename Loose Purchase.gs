@@ -75,8 +75,8 @@ function lpWrite(lines) {
   return { first: first, last: last };
 }
 
-// "Download XLSX" button of the window: same checks + file as the menu item.
-function lpDownload() { return pcMakeFile_(); }
+// "Download" button of the window: same checks + the same two files as the DOWNLOAD XLSX FILE button.
+function lpDownload() { return pcBuildFiles(); }
 
 // ✎ in the window: change packs / cost / tax of a line already in the sheet (row must still hold the same product).
 function lpUpdate(row, dd, v) {

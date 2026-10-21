@@ -208,19 +208,38 @@ function pcAoa_(rows) {
 }
 
 // Real .xlsx: Product Code / Variant are text cells (leading zeros kept). Returns signed bytes for Apps Script.
-function pcXlsxBytes_(aoa) {
+function pcXlsxBytes_(aoa, sheetName, textCols) {
   const lib = sheetJs_();
   const ws = lib.utils.aoa_to_sheet(aoa);
   for (let r = 2; r <= aoa.length; r++) {
-    ['A', 'D', 'E', 'G'].forEach(col => {
+    (textCols || ['A', 'D', 'E', 'G']).forEach(col => {
       const c = ws[col + r];
       if (c) { c.t = 's'; c.v = String(c.v); c.z = '@'; delete c.w; }
     });
   }
   const wb = lib.utils.book_new();
-  lib.utils.book_append_sheet(wb, ws, 'sample_purchase_products');   // same sheet name as the POS sample
+  lib.utils.book_append_sheet(wb, ws, sheetName || 'sample_purchase_products');   // default = same sheet name as the POS sample
   const u8 = new Uint8Array(lib.write(wb, { bookType: 'xlsx', type: 'array', bookSST: true }));
   return Array.prototype.map.call(u8, b => b > 127 ? b - 256 : b);
+}
+
+// Product import sheet (same columns as Export Products to XLS: Code, Product Name, Article Code, Price, MRP,
+// Variants_Name, Variants_Price) for the products on the purchase lines. pl = {bar, name, npp, mrp} parallel
+// arrays of the Product List (bar as displayed). One row per product, in the order of the lines.
+function pcProductAoa_(rows, pl) {
+  const at = {};
+  pl.bar.forEach((b, i) => { const k = normBar_(b); if (k && at[k] === undefined) at[k] = i; });
+  const out = [['Code', 'Product Name', 'Article Code', 'Price', 'MRP', 'Variants_Name', 'Variants_Price']];
+  const seen = {};
+  rows.forEach(r => {
+    const k = normBar_(r.code);
+    if (seen[k]) return;
+    seen[k] = true;
+    const i = at[k];
+    if (i === undefined) return;
+    out.push([String(pl.bar[i]).trim(), pl.name[i], null, pl.npp[i] === '' ? null : pl.npp[i], pl.mrp[i] === '' ? null : pl.mrp[i], null, null]);
+  });
+  return out;
 }
 
 // (not used: the POS rejects .csv) UTF-8 CSV, no BOM, comma separated.
@@ -246,53 +265,61 @@ function pcCheck() {
   }
 }
 
-// The POS page accepts .xlsx only ("Invalid file selected. Only .xlsx file is allowed"), so there is no CSV download.
-function pcExportXlsx() { pcExport_('xlsx'); }
 
-// Builds the .xlsx in Drive (temp file) from the sheet. Returns {problems:[…]} | {empty:true} | {name,url,fileId,count}.
-function pcMakeFile_() {
+// (no trailing _ : called from the browser window) Builds BOTH files in memory (nothing is saved in Drive): the purchase file for the POS and the product xlsx of the
+// products on the lines. Returns {problems:[…]} | {empty:true} | {files:[{name, mime, b64}], count, products}.
+function pcBuildFiles() {
   const res = pcCollect_();
   if (res.problems.length) return { problems: res.problems };
   if (!res.rows.length) return { empty: true };
-  const aoa = pcAoa_(res.rows);
+  const list = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Product List');
+  const n = Math.max(list.getLastRow() - 1, 1);
+  const bn = list.getRange(2, 2, n, 2).getDisplayValues();
+  const nm = list.getRange(2, 5, n, 2).getValues();
+  const prodAoa = pcProductAoa_(res.rows, { bar: bn.map(r => r[0]), name: bn.map(r => r[1]), npp: nm.map(r => r[0]), mrp: nm.map(r => r[1]) });
   const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
-  const name = 'Purchase_' + stamp + '.xlsx';
-  const file = DriveApp.createFile(Utilities.newBlob(pcXlsxBytes_(aoa), PC_XLSX_MIME_, name));
-  const fileId = file.getId();
-  scheduleExportCleanup_(fileId);   // same temp-file clean-up as Export Products to XLS
-  return { name: name, url: file.getDownloadUrl(), fileId: fileId, count: res.rows.length };
+  const enc = bytes => Utilities.base64Encode(bytes);
+  return {
+    count: res.rows.length,
+    products: prodAoa.length - 1,
+    files: [
+      { name: 'Products_' + stamp + '.xlsx', mime: PC_XLSX_MIME_, b64: enc(pcXlsxBytes_(prodAoa, 'Worksheet', ['A', 'C'])) },
+      { name: 'Purchase_' + stamp + '.xlsx', mime: PC_XLSX_MIME_, b64: enc(pcXlsxBytes_(pcAoa_(res.rows))) }
+    ]
+  };
 }
 
-function pcExport_() {
-  const ui = SpreadsheetApp.getUi();
-  const r = pcMakeFile_();
-  if (r.problems) {
-    ui.alert('Nothing downloaded - please fix', r.problems.slice(0, 15).join('\n') +
-      (r.problems.length > 15 ? '\n…and ' + (r.problems.length - 15) + ' more' : ''), ui.ButtonSet.OK);
-    return;
-  }
-  if (r.empty) { ui.alert('There are no lines to download.'); return; }
+// Browser side, shared by the small download window and the Loose purchase window: saves every file straight away
+// (one after the other, no link to click) and keeps links as a back-up if the browser blocks a download.
+const PC_SAVE_JS_ = 'function pcSaveFiles(files, box){'
+  + 'box.innerHTML="";'
+  + 'files.forEach(function(f,i){'
+  + ' var bin=atob(f.b64),u=new Uint8Array(bin.length);for(var k=0;k<bin.length;k++)u[k]=bin.charCodeAt(k);'
+  + ' var url=URL.createObjectURL(new Blob([u],{type:f.mime}));'
+  + ' var a=document.createElement("a");a.href=url;a.download=f.name;a.textContent=f.name;a.style.display="block";a.style.margin="3px 0";'
+  + ' box.appendChild(a);'
+  + ' setTimeout(function(){a.click();},i*700);'
+  + '});}';
+
+// DOWNLOAD XLSX FILE button / menu: small window that builds both files and saves them at once.
+function pcExportXlsx() {
   const html = HtmlService.createHtmlOutput(
-    '<div style="font-family:Arial,sans-serif;font-size:13px;padding:10px;">'
-    + '<p><b>' + r.count + '</b> purchase line(s) ready for the POS.</p>'
-    + '<p><a id="dl" href="' + r.url + '" target="_blank">Download ' + r.name + '</a></p>'
-    + '<p style="color:#555;font-size:12px;">POS → Purchases → Add Purchase by CSV → Browse → pick this file.</p>'
-    + '<p id="msg" style="color:#777;font-size:11px;">The file is removed from Drive 15 seconds after you click the link.</p>'
-    + '<script>'
-    + 'document.getElementById("dl").addEventListener("click", function(){'
-    + '  var n = 15; var m = document.getElementById("msg");'
-    + '  var t = setInterval(function(){'
-    + '    n--; m.textContent = "Removing from Drive in " + n + "s...";'
-    + '    if (n <= 0) { clearInterval(t);'
-    + '      google.script.run'
-    + '        .withSuccessHandler(function(){ m.textContent = "Removed from Drive."; })'
-    + '        .withFailureHandler(function(e){ m.textContent = "Could not remove: " + e.message; })'
-    + '        .deleteExportFile("' + r.fileId + '"); }'
-    + '  }, 1000);'
-    + '});'
+    '<div style="font-family:Arial,sans-serif;font-size:13px;padding:12px;">'
+    + '<p id="m" style="font-size:14px">Making the files…</p>'
+    + '<div id="f" style="font-size:12px"></div>'
+    + '<p id="h" style="color:#777;font-size:11px;display:none">Not downloaded by itself? Click the file names above (or allow multiple downloads in the address bar).</p>'
+    + '<button onclick="google.script.host.close()" style="margin-top:8px;padding:5px 14px">Close</button>'
+    + '<script>' + PC_SAVE_JS_
+    + 'google.script.run.withSuccessHandler(function(r){'
+    + ' var m=document.getElementById("m");'
+    + ' if(r.problems){m.style.color="#c00";m.innerHTML="Nothing downloaded - please fix:<br><span style=\'font-size:12px\'>"+r.problems.slice(0,10).join("<br>")+"</span>";return;}'
+    + ' if(r.empty){m.style.color="#c00";m.textContent="There are no lines to download.";return;}'
+    + ' m.innerHTML="✔ "+r.count+" purchase line(s), "+r.products+" product(s) - downloading "+r.files.length+" files…";'
+    + ' pcSaveFiles(r.files,document.getElementById("f"));document.getElementById("h").style.display="block";'
+    + '}).withFailureHandler(function(e){var m=document.getElementById("m");m.style.color="#c00";m.textContent=e.message;}).pcBuildFiles();'
     + '<\/script></div>'
-  ).setWidth(400).setHeight(230);
-  ui.showModalDialog(html, 'Purchase file ready');
+  ).setWidth(420).setHeight(260);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Download');
 }
 
 // Clears the typed lines (columns A–H, rows 5 down); keeps the formulas, dropdowns and the default tax.

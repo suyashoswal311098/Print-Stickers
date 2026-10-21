@@ -88,7 +88,7 @@
   </div>
   <div class="bar">
     <button id="put" disabled>Put in sheet</button>
-    <button id="dl" class="sec">⬇ Download XLSX for POS</button>
+    <button id="dl" class="sec">⬇ Download both files</button>
     <span id="msg"></span>
     <span id="dlbox"></span>
   </div>
@@ -363,22 +363,29 @@ function pump() {
 }
 function putInSheet() { writeItems(items); }
 
+// Saves every file at once (no link to click); the file names stay as links in case the browser blocks one.
+function pcSaveFiles(files, box) {
+  box.innerHTML = '';
+  files.forEach(function (f, i) {
+    var bin = atob(f.b64), u = new Uint8Array(bin.length);
+    for (var k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([u], { type: f.mime }));
+    a.download = f.name; a.textContent = f.name; a.style.marginRight = '12px';
+    box.appendChild(a);
+    setTimeout(function () { a.click(); }, i * 700);
+  });
+}
+
 function download() {
-  $('dl').disabled = true; setMsg('Making the file…'); $('dlbox').innerHTML = '';
+  $('dl').disabled = true; setMsg('Making the files…'); $('dlbox').innerHTML = '';
   google.script.run
     .withSuccessHandler(function (r) {
       $('dl').disabled = false;
       if (r.problems) { setMsg('<span class="err">Fix first:</span> ' + esc(r.problems.slice(0, 8).join(' | '))); return; }
       if (r.empty) { setMsg('<span class="err">The sheet has no lines yet.</span>'); return; }
-      setMsg('');
-      $('dlbox').innerHTML = '<b>' + r.count + '</b> line(s): <a id="dla" href="' + esc(r.url) + '" target="_blank">Download ' + esc(r.name) + '</a> <span id="dlm" class="muted">(removed from Drive 15 s after you click)</span>';
-      $('dla').addEventListener('click', function () {
-        var n = 15, m = $('dlm');
-        var t = setInterval(function () {
-          n--; m.textContent = 'Removing from Drive in ' + n + 's...';
-          if (n <= 0) { clearInterval(t); google.script.run.withSuccessHandler(function () { m.textContent = 'Removed from Drive.'; }).deleteExportFile(r.fileId); }
-        }, 1000);
-      });
+      setMsg('<span class="ok">✔ ' + r.count + ' line(s), ' + r.products + ' product(s) - downloading ' + r.files.length + ' files…</span>');
+      pcSaveFiles(r.files, $('dlbox'));
     })
     .withFailureHandler(function (e) { $('dl').disabled = false; setMsg('<span class="err">' + esc(e.message) + '</span>'); })
     .lpDownload();
