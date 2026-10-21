@@ -128,6 +128,7 @@ function setupPurchaseSheet() {
   [110, 95, 75, 100, 110, 80, 95, 95, 230, 175, 170, 150, 160].forEach((w, i) => sh.setColumnWidth(i + 2, w));
   sh.activate();
   sh.getRange(PC_FIRST_, 1).activate();
+  try { pcPlaceButtons(true); } catch (err) { console.warn('Purchase CSV buttons: ' + err.message); }
   ss.toast(isNew ? 'Purchase CSV sheet created.' : 'Purchase CSV sheet checked / repaired (your lines were kept).', 'Purchase CSV', 5);
 }
 
