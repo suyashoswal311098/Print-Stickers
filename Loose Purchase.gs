@@ -10,6 +10,7 @@
 function openLoosePurchase() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss.getSheetByName(PC_SHEET_)) { SpreadsheetApp.getUi().alert('Run Product Tools → Purchase CSV for POS → Set up / repair sheet first.'); return; }
+  pcEnsureLayout_();   // old sheet formulas → repaired first (lines kept)
   const html = HtmlService.createHtmlOutputFromFile('Loose Purchase Dialog').setWidth(1000).setHeight(800);
   SpreadsheetApp.getUi().showModalDialog(html, 'Loose purchase');
 }

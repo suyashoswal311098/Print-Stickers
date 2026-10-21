@@ -32,6 +32,16 @@ function pcInclCost_(cost, taxCode) {
   return Math.round(cost * (1 + (t ? t[2] : 0) / 100) * 10000) / 10000;
 }
 
+// Layout version of the Purchase CSV sheet. Raise it whenever setupPurchaseSheet changes formulas/columns:
+// the LOOSE PURCHASE / DOWNLOAD buttons then repair the sheet by themselves (typed lines are kept).
+const PC_LAYOUT_VERSION_ = '4';   // 4 = Net Unit Cost incl tax, I total incl, M rate ex, N total ex
+function pcEnsureLayout_() {
+  const props = PropertiesService.getDocumentProperties();
+  if (props.getProperty('pc_layout') === PC_LAYOUT_VERSION_) return false;
+  setupPurchaseSheet();
+  return true;
+}
+
 function pcTaxCodes_() { return PC_TAX_CODES_.map(t => t[1]); }
 
 // Creates (or repairs, without clearing typed lines) the Purchase CSV + POS Tax Codes sheets.
@@ -129,6 +139,7 @@ function setupPurchaseSheet() {
   sh.activate();
   sh.getRange(PC_FIRST_, 1).activate();
   try { pcPlaceButtons(true); } catch (err) { console.warn('Purchase CSV buttons: ' + err.message); }
+  PropertiesService.getDocumentProperties().setProperty('pc_layout', PC_LAYOUT_VERSION_);
   ss.toast(isNew ? 'Purchase CSV sheet created.' : 'Purchase CSV sheet checked / repaired (your lines were kept).', 'Purchase CSV', 5);
 }
 
@@ -303,6 +314,7 @@ const PC_SAVE_JS_ = 'function pcSaveFiles(files, box){'
 
 // DOWNLOAD XLSX FILE button / menu: small window that builds both files and saves them at once.
 function pcExportXlsx() {
+  if (SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_)) pcEnsureLayout_();
   const html = HtmlService.createHtmlOutput(
     '<div style="font-family:Arial,sans-serif;font-size:13px;padding:12px;">'
     + '<p id="m" style="font-size:14px">Making the files…</p>'
