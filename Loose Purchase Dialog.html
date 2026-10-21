@@ -21,7 +21,7 @@
   #listbox { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; border: 1px solid #dadce0; border-radius: 8px; padding: 6px 8px; }
   #listscroll { flex: 1; overflow: auto; min-height: 0; }
   table { border-collapse: collapse; width: 100%; }
-  th { background: #4a86c8; color: #fff; padding: 3px 6px; text-align: left; font-size: 11px; position: sticky; top: 0; }
+  th { background: #4a86c8; color: #fff; padding: 3px 6px; text-align: left; font-size: 11px; }
   td { border-bottom: 1px solid #e3e3e3; padding: 2px 6px; }
   td.n, th.n { text-align: right; }
   .kg { width: 80px; text-align: right; padding: 3px 6px; font-size: 13px; }
@@ -57,13 +57,13 @@
 
 <div id="main">
   <div id="left">
+    <div class="bar" id="lefttop" style="margin:0 0 4px;position:sticky;top:-6px;background:#fff;z-index:3;padding:2px 0"><button id="eq" class="sec" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><span id="rem"></span></div>
     <div id="hint" class="muted">Loading products…</div>
     <div id="groups" style="margin:4px 0"></div>
     <table id="vt" style="display:none">
       <thead><tr><th title="tick = included in Split equal"></th><th>Size</th><th>Product</th><th class="n">NPP</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
       <tbody id="vb"></tbody>
     </table>
-    <div class="bar" style="margin-top:4px"><button id="eq" class="sec mini" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><span id="rem"></span></div>
   </div>
   <div id="right">
     <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
@@ -139,7 +139,7 @@ function f2(x) { return (Math.round(x * 100) / 100).toLocaleString('en-IN', { mi
 function numOf(id) { var v = $(id).value.replace(/,/g, '').trim(); return v !== '' && isFinite(v) ? Number(v) : NaN; }
 function qtyG() { return parseSum($('qty').value, true) || parseSum($('q').value, false); }
 
-var groups = [], selGroup = '';
+var groups = [], selGroup = '', showAll = false;
 // A product matches when every typed word is the START of a word in its name (so "wa" finds Walnut, not Ajwa).
 // Matching products are grouped by name without the size; you pick one group, its sizes are the rows to split.
 function findCands() {
@@ -172,11 +172,18 @@ function renderVariants() {
   else if (!cands.length) hint.textContent = groups.length + ' products match - click the one you bought.' + (noSize ? ' (+' + noSize + ' match without a size in the name, not used)' : '');
   else hint.textContent = cands.length + ' pack size(s) of this product. Type how many kg go to each size.' + (noSize ? ' (+' + noSize + ' other match without a size in the name, not used)' : '');
   var gb = $('groups'); gb.innerHTML = '';
-  if (groups.length > 1) groups.forEach(function (g) {
-    var b = document.createElement('button'); b.className = 'grp' + (g.base === selGroup ? ' sel' : ''); b.setAttribute('data-g', g.base);
-    b.innerHTML = esc(g.items[0].name.replace(SIZE_RE, ' ').replace(/\s+/g, ' ').trim()) + ' <span class="muted">— ' + g.items.map(function (p) { return sizeLabel(p.g); }).join(', ') + '</span>';
-    gb.appendChild(b);
-  });
+  if (groups.length > 1) {
+    var shown = (selGroup && !showAll) ? groups.filter(function (g) { return g.base === selGroup; }) : groups;
+    shown.forEach(function (g) {
+      var b = document.createElement('button'); b.className = 'grp' + (g.base === selGroup ? ' sel' : ''); b.setAttribute('data-g', g.base);
+      b.innerHTML = esc(g.items[0].name.replace(SIZE_RE, ' ').replace(/\s+/g, ' ').trim()) + ' <span class="muted">— ' + g.items.map(function (p) { return sizeLabel(p.g); }).join(', ') + '</span>';
+      gb.appendChild(b);
+    });
+    if (selGroup && !showAll) {
+      var o = document.createElement('button'); o.className = 'sec mini'; o.setAttribute('data-other', '1'); o.textContent = '▾ ' + (groups.length - 1) + ' other matches';
+      gb.appendChild(o);
+    }
+  }
   $('vt').style.display = cands.length ? '' : 'none';
   $('eq').style.display = cands.length > 1 ? '' : 'none';
   cands.forEach(function (p) {
@@ -379,7 +386,7 @@ function download() {
 var qTimer = null;
 $('q').addEventListener('input', function () {
   // a size typed after the name ("walnut 40kg") becomes the quantity when the quantity box is empty
-  clearTimeout(qTimer); qTimer = setTimeout(renderVariants, 120);
+  clearTimeout(qTimer); showAll = false; qTimer = setTimeout(renderVariants, 120);
 });
 $('qty').addEventListener('input', recalc);
 $('rate').addEventListener('input', recalc);
@@ -387,8 +394,9 @@ $('unit').addEventListener('change', recalc);
 $('tax').addEventListener('change', recalc);
 Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r.addEventListener('change', recalc); });
 $('groups').addEventListener('click', function (e) {
+  if (e.target.getAttribute && e.target.getAttribute('data-other')) { showAll = true; renderVariants(); return; }
   var b = e.target.closest ? e.target.closest('[data-g]') : null; if (!b) return;
-  selGroup = b.getAttribute('data-g'); kgs = {}; renderVariants(); $('qty').focus();
+  selGroup = b.getAttribute('data-g'); kgs = {}; showAll = false; renderVariants(); $('qty').focus();
 });
 $('vb').addEventListener('input', function (e) { var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; recalc(); } });
 $('vb').addEventListener('click', function (e) {
