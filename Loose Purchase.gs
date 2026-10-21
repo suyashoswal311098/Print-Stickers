@@ -15,13 +15,13 @@ function openLoosePurchase() {
   SpreadsheetApp.getUi().showModalDialog(html, 'Loose purchase');
 }
 
-// Product List for the window: [[barcode, name, NPP, dropdown text], …] + tax codes + default tax.
+// Product List for the window: [[barcode, name, NPP, dropdown text, MRP], …] + tax codes + default tax.
 function lpGetData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const list = ss.getSheetByName('Product List');
   const n = Math.max(list.getLastRow() - 1, 1);
   const bn = list.getRange(2, 2, n, 2).getDisplayValues();
-  const npp = list.getRange(2, 5, n, 1).getValues();
+  const npp = list.getRange(2, 5, n, 2).getValues();   // E NPP, F MRP
 
   // dropdown text ("barcode name") of the Print Console B2 list, by barcode
   const dd = {};
@@ -41,7 +41,7 @@ function lpGetData() {
   bn.forEach((r, i) => {
     const code = String(r[0]).trim(), name = String(r[1]).trim();
     if (!code || !name) return;
-    products.push([code, name, npp[i][0] === '' ? '' : Number(npp[i][0]), dd[normBar_(code)] || (code + ' ' + name)]);
+    products.push([code, name, npp[i][0] === '' ? '' : Number(npp[i][0]), dd[normBar_(code)] || (code + ' ' + name), npp[i][1] === '' ? '' : Number(npp[i][1])]);
   });
   const sh = ss.getSheetByName(PC_SHEET_);
   return {
@@ -105,4 +105,24 @@ function lpRowCheck_(row, dd) {
   if (row < PC_FIRST_ || row > PC_FIRST_ + PC_ROWS_ - 1) throw new Error('Row ' + row + ' is outside the purchase lines.');
   if (String(sh.getRange(row, 1).getValue()).trim() !== String(dd).trim()) throw new Error('Row ' + row + ' in the sheet is not this product any more - change it in the sheet.');
   return sh;
+}
+
+// NPP / MRP typed in the window (user's choice: also saved in Product List). changes = [{code, npp?, mrp?}];
+// only the given fields are written (E = NPP, F = MRP) in the first Product List row with that barcode. Returns rows changed.
+function lpSavePrices(changes) {
+  const list = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Product List');
+  const n = Math.max(list.getLastRow() - 1, 1);
+  const bars = list.getRange(2, 2, n, 1).getDisplayValues();
+  const at = {};
+  bars.forEach((r, i) => { const k = normBar_(r[0]); if (k && at[k] === undefined) at[k] = i + 2; });
+  let done = 0;
+  (changes || []).forEach(c => {
+    const row = at[normBar_(c.code)];
+    if (!row) return;
+    const ok = v => typeof v === 'number' && isFinite(v) && v >= 0;
+    if (ok(c.npp)) list.getRange(row, 5).setValue(c.npp);
+    if (ok(c.mrp)) list.getRange(row, 6).setValue(c.mrp);
+    if (ok(c.npp) || ok(c.mrp)) done++;
+  });
+  return done;
 }

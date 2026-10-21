@@ -25,6 +25,8 @@
   td { border-bottom: 1px solid #e3e3e3; padding: 2px 6px; }
   td.n, th.n { text-align: right; }
   .kg { width: 80px; text-align: right; padding: 3px 6px; font-size: 13px; }
+  .pr { width: 62px; text-align: right; padding: 3px 4px; font-size: 12px; border: 1px dashed #aab; }
+  .pr.chg { background: #fff3c4; border: 1px solid #e0a800; }
   .ed { width: 70px; text-align: right; padding: 2px 4px; font-size: 13px; }
   .muted { color: #777; font-size: 12px; }
   .err { color: #c00; font-weight: bold; }
@@ -65,7 +67,7 @@
     <div id="hint" class="muted">Loading products…</div>
     <div id="groups" style="margin:4px 0"></div>
     <table id="vt" style="display:none">
-      <thead><tr><th title="tick = included in Split equal"></th><th>Size</th><th>Product</th><th class="n">NPP</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
+      <thead><tr><th title="tick = included in Split equal"></th><th>Size</th><th>Product</th><th class="n" title="change or fill in - saved in Product List when you Add to list">NPP ✎</th><th class="n" title="change or fill in - saved in Product List when you Add to list">MRP ✎</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
       <tbody id="vb"></tbody>
     </table>
   </div>
@@ -190,8 +192,8 @@ function renderVariants() {
   $('eq').style.display = cands.length > 1 ? '' : 'none';
   cands.forEach(function (p) {
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td><input type="checkbox" data-use="' + esc(p.code) + '"' + (useSz[p.code] === false ? '' : ' checked') + '></td><td><b>' + esc(sizeLabel(p.g)) + '</b></td><td>' + esc(p.name) + '</td><td class="n">' + (p.npp === '' ? '–' : f2(p.npp)) +
-      '</td><td class="n"><input type="text" class="kg" data-c="' + esc(p.code) + '" value="' + esc(kgs[p.code] || '') + '" placeholder="kg"></td>' +
+    tr.innerHTML = '<td><input type="checkbox" data-use="' + esc(p.code) + '"' + (useSz[p.code] === false ? '' : ' checked') + '></td><td style="white-space:nowrap"><b>' + esc(sizeLabel(p.g)) + '</b></td><td>' + esc(p.name) + '</td>' + priceCell(p, 'npp') + priceCell(p, 'mrp') +
+      '<td class="n"><input type="text" class="kg" data-c="' + esc(p.code) + '" value="' + esc(kgs[p.code] || '') + '" placeholder="kg"></td>' +
       '<td class="n" data-pk="' + esc(p.code) + '"></td><td><button class="sec mini" data-fill="' + esc(p.code) + '" title="Put all the remaining kg here">rest ↵</button></td>';
     vb.appendChild(tr);
   });
@@ -256,6 +258,39 @@ function recalc() {
   return (errs.length || !math) ? null : { rows: rows, math: math, tax: taxCode, t: TAX[taxCode] };
 }
 
+// NPP / MRP boxes: typed values are kept in prices[code] until "Add to list" saves them in Product List.
+var prices = {};
+function priceCell(p, f) {
+  var typed = prices[p.code] && prices[p.code][f] !== undefined ? prices[p.code][f] : null;
+  var v = typed !== null ? typed : (p[f] === '' ? '' : String(p[f]));
+  var chg = typed !== null && pnum(typed) !== (p[f] === '' ? null : Number(p[f]));
+  return '<td class="n"><input type="text" class="pr' + (chg ? ' chg' : '') + '" data-pr="' + f + '" data-pc="' + esc(p.code) + '" value="' + esc(v) + '" placeholder="' + f.toUpperCase() + '"></td>';
+}
+function pnum(v) { v = String(v).replace(/,/g, '').trim(); return v !== '' && isFinite(v) && Number(v) >= 0 ? Number(v) : null; }
+// changed NPP / MRP of the products on screen → [{code, npp?, mrp?}] (blank or same value = no change)
+function priceChanges() {
+  var out = [];
+  cands.forEach(function (p) {
+    var t = prices[p.code]; if (!t) return;
+    var c = { code: p.code }, any = false;
+    ['npp', 'mrp'].forEach(function (f) {
+      if (t[f] === undefined) return;
+      var n = pnum(t[f]); if (n === null) return;
+      if (p[f] === '' || Number(p[f]) !== n) { c[f] = n; any = true; }
+    });
+    if (any) out.push(c);
+  });
+  return out;
+}
+function savePrices(ch) {
+  if (!ch.length) return;
+  ch.forEach(function (c) { P.forEach(function (p) { if (p.code === c.code) { if (c.npp !== undefined) p.npp = c.npp; if (c.mrp !== undefined) p.mrp = c.mrp; } }); delete prices[c.code]; });
+  google.script.run
+    .withSuccessHandler(function (n) { setMsg('<span class="ok">✔ NPP / MRP saved in Product List for ' + n + ' product(s).</span>'); })
+    .withFailureHandler(function (e) { setMsg('<span class="err">NPP / MRP not saved: ' + esc(e.message) + '</span>'); })
+    .lpSavePrices(ch);
+}
+
 function addToList() {
   var pl = recalc();
   if (!pl) return;
@@ -265,6 +300,7 @@ function addToList() {
     var it = { dd: r.p.dd, name: r.p.name, packs: r.packs, cost: cost, tax: pl.tax, t: pl.t, done: false, q: false };
     items.push(it); fresh.push(it);
   });
+  savePrices(priceChanges());
   kgs = {}; $('q').value = ''; $('qty').value = ''; $('rate').value = '';   // keep rate unit, incl/excl, tax for the next product
   renderVariants(); renderList();
   if ($('fast').checked) writeItems(fresh);
@@ -411,7 +447,15 @@ $('groups').addEventListener('click', function (e) {
   var b = e.target.closest ? e.target.closest('[data-g]') : null; if (!b) return;
   selGroup = b.getAttribute('data-g'); kgs = {}; showAll = false; renderVariants(); $('qty').focus();
 });
-$('vb').addEventListener('input', function (e) { var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; recalc(); } });
+$('vb').addEventListener('input', function (e) {
+  var f = e.target.getAttribute('data-pr');
+  if (f) {
+    var c = e.target.getAttribute('data-pc'); prices[c] = prices[c] || {}; prices[c][f] = e.target.value;
+    var p = P.filter(function (x) { return x.code === c; })[0];
+    e.target.className = 'pr' + (p && pnum(e.target.value) !== (p[f] === '' ? null : Number(p[f])) ? ' chg' : '');
+    if (pnum(e.target.value) === null && e.target.value.trim() !== '') e.target.className = 'pr chg';
+    return;
+  } var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; recalc(); } });
 $('vb').addEventListener('click', function (e) {
   var c = e.target.getAttribute('data-fill'); if (!c) return;
   var qKg = qtyG() / 1000, other = 0;
@@ -458,6 +502,11 @@ $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.pre
 $('qty').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); var k = kgInputs(); (k[0] || $('rate')).focus(); } });
 // Enter in a kg box: empty = put all remaining kg there; then jump to the next box, after the last one to Rate
 $('vb').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && e.target.getAttribute('data-pr')) {
+    e.preventDefault(); e.stopPropagation();
+    var all = Array.prototype.slice.call(document.querySelectorAll('input.pr')), at = all.indexOf(e.target);
+    (all[at + 1] || $('rate')).focus(); return;
+  }
   if (e.key !== 'Enter' || !e.target.getAttribute('data-c')) return;
   e.preventDefault(); e.stopPropagation();
   var c = e.target.getAttribute('data-c');
@@ -484,7 +533,7 @@ $('unit').addEventListener('change', function () { try { localStorage.setItem('l
 $('q').addEventListener('blur', function () { if (!$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; recalc(); } } });
 
 function init(d) {
-  P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
+  P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], mrp: r[4] === undefined ? '' : r[4], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
   d.taxes.forEach(function (t) { TAX[t[0]] = t[1]; });
   var sel = $('tax'); sel.innerHTML = '<option value="">– choose –</option>';
   d.taxes.forEach(function (t) { var o = document.createElement('option'); o.value = t[0]; o.textContent = t[0] + '  (' + t[1] + '%)'; sel.appendChild(o); });
