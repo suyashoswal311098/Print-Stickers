@@ -23,8 +23,16 @@ const PC_TAX_CODES_ = [
   ['5%GST', '12%GST', 5, 1],
   ['5% GST', '28%GST', 5, 1]
 ];
+// true = the file's Net Unit Cost is the rate INCLUDING tax (user's choice, 22 Oct); false = the ex-tax cost from column C.
+const PC_FILE_COST_INCL_ = true;
 const PC_EXPIRY_FORMAT_ = 'MM/dd/yyyy';   // as in the POS sample file (09/26/2019); a date typed in Expiry is written like this
 const PC_XLSX_MIME_ = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+// Cost × (1 + tax %) for a Tax Rate Code (POS Tax Codes table); no / unknown code = no tax. 4 decimals.
+function pcInclCost_(cost, taxCode) {
+  const t = PC_TAX_CODES_.filter(x => x[1] === taxCode)[0];
+  return Math.round(cost * (1 + (t ? t[2] : 0) / 100) * 10000) / 10000;
+}
 
 function pcTaxCodes_() { return PC_TAX_CODES_.map(t => t[1]); }
 
@@ -65,7 +73,7 @@ function setupPurchaseSheet() {
   sh.getRange('M2').setValue('Total incl tax').setHorizontalAlignment('right').setFontWeight('bold');
   sh.getRange('N2').setFormula('=SUM(N' + PC_FIRST_ + ':N' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
   sh.getRange('A3').setValue('Pick/type a product in column A and type Quantity. B, C, I, J, L, M, N are formulas in the header row (do not type there). ' +
-    'B–H go into the file in the POS order; the grey columns (totals, rate incl tax) are only for you.').setFontColor('#666');
+    'B–H go into the file in the POS order (the file\'s Net Unit Cost = Rate incl tax, column M); the grey columns are only for you.').setFontColor('#666');
 
   // Header row: plain labels, except B, C, I, J = label + ONE array formula that fills the whole column.
   // Spill cells below must be empty, so old values/formulas in those columns are cleared first.
@@ -183,7 +191,7 @@ function pcCollect_() {
     if (tax && taxOk.indexOf(tax) < 0) bad.push('Tax Rate Code "' + tax + '" is not a POS code');
     if (bad.length) { problems.push('Row ' + row + ': ' + bad.join('; ')); return; }
     const exp = r[7] instanceof Date ? Utilities.formatDate(r[7], tz, PC_EXPIRY_FORMAT_) : String(r[7]).trim();
-    rows.push({ row: row, code: c, cost: cost, qty: qty, variant: String(r[4]).trim(), tax: tax, disc: String(r[6]).trim(), exp: exp });
+    rows.push({ row: row, code: c, cost: PC_FILE_COST_INCL_ ? pcInclCost_(cost, tax) : cost, qty: qty, variant: String(r[4]).trim(), tax: tax, disc: String(r[6]).trim(), exp: exp });
   });
   return { rows: rows, problems: problems };
 }
