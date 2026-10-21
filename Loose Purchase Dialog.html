@@ -60,10 +60,10 @@
     <div id="hint" class="muted">Loading products…</div>
     <div id="groups" style="margin:4px 0"></div>
     <table id="vt" style="display:none">
-      <thead><tr><th>Size</th><th>Product</th><th class="n">NPP</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
+      <thead><tr><th title="tick = included in Split equal"></th><th>Size</th><th>Product</th><th class="n">NPP</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
       <tbody id="vb"></tbody>
     </table>
-    <div id="rem" style="margin-top:4px"></div>
+    <div class="bar" style="margin-top:4px"><button id="eq" class="sec mini" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><span id="rem"></span></div>
   </div>
   <div id="right">
     <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
@@ -129,7 +129,7 @@ function rateMath(rate, perKg, incl, taxPct, qtyKg) {
 }
 // ---------- end pure helpers ----------
 
-var P = [], TAX = {}, defTax = '', loaded = false;
+var useSz = {}, P = [], TAX = {}, defTax = '', loaded = false;
 var cands = [], noSize = 0, kgs = {}, items = [];
 var $ = function (id) { return document.getElementById(id); };
 
@@ -178,9 +178,10 @@ function renderVariants() {
     gb.appendChild(b);
   });
   $('vt').style.display = cands.length ? '' : 'none';
+  $('eq').style.display = cands.length > 1 ? '' : 'none';
   cands.forEach(function (p) {
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td><b>' + esc(sizeLabel(p.g)) + '</b></td><td>' + esc(p.name) + '</td><td class="n">' + (p.npp === '' ? '–' : f2(p.npp)) +
+    tr.innerHTML = '<td><input type="checkbox" data-use="' + esc(p.code) + '"' + (useSz[p.code] === false ? '' : ' checked') + '></td><td><b>' + esc(sizeLabel(p.g)) + '</b></td><td>' + esc(p.name) + '</td><td class="n">' + (p.npp === '' ? '–' : f2(p.npp)) +
       '</td><td class="n"><input type="text" class="kg" data-c="' + esc(p.code) + '" value="' + esc(kgs[p.code] || '') + '" placeholder="kg"></td>' +
       '<td class="n" data-pk="' + esc(p.code) + '"></td><td><button class="sec mini" data-fill="' + esc(p.code) + '" title="Put all the remaining kg here">rest ↵</button></td>';
     vb.appendChild(tr);
@@ -414,6 +415,23 @@ $('fast').addEventListener('change', function () { try { localStorage.setItem('l
 $('add').addEventListener('click', addToList);
 $('put').addEventListener('click', putInSheet);
 $('dl').addEventListener('click', download);
+// Equal WEIGHT for every ticked size, whole packs only; the few kg that do not fit are given out as extra packs
+// (smallest sizes first). Anything that still does not fit is shown as "kg left" to fix by hand.
+function splitEqual() {
+  var qG = qtyG(); if (!qG) { $('rem').innerHTML = '<span class="err">Type the quantity first (e.g. 10kg).</span>'; $('qty').focus(); return; }
+  var sel = cands.filter(function (p) { return useSz[p.code] !== false; });
+  if (!sel.length) { $('rem').innerHTML = '<span class="err">Tick at least one size.</span>'; return; }
+  var share = qG / sel.length, pk = {}, used = 0;
+  sel.forEach(function (p) { pk[p.code] = Math.floor(share / p.g + 1e-9); used += pk[p.code] * p.g; });
+  var left = qG - used, moved = true;
+  while (moved) { moved = false; sel.forEach(function (p) { if (left + 1e-9 >= p.g) { pk[p.code]++; left -= p.g; moved = true; } }); }
+  kgs = {};
+  sel.forEach(function (p) { if (pk[p.code] > 0) kgs[p.code] = String(Math.round(pk[p.code] * p.g) / 1000); });
+  renderVariants();
+  var rate = $('rate'); if (qtyG() && !$('add').disabled) $('add').focus(); else rate.focus();
+}
+$('eq').addEventListener('click', splitEqual);
+$('vb').addEventListener('change', function (e) { var c = e.target.getAttribute('data-use'); if (c) useSz[c] = e.target.checked; });
 function kgInputs() { return Array.prototype.slice.call(document.querySelectorAll('input.kg')); }
 $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); clearTimeout(qTimer); renderVariants(); $('qty').focus(); $('qty').select(); } });
 $('qty').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); var k = kgInputs(); (k[0] || $('rate')).focus(); } });
