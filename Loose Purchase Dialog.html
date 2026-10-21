@@ -42,6 +42,10 @@
   .grp.sel { background: #e8f0fe; border-color: #1f3d66; font-weight: bold; }
   .tot td { font-weight: bold; border-top: 2px solid #999; }
   .editing td { background: #fff8e1; }
+  .ct { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ct th { background: #f0d98a; color: #5a4300; font-size: 11px; padding: 3px 6px; }
+  .ct td { border-bottom: 1px solid #f0e2b0; padding: 3px 6px; }
+  .ct tr.cq td { border-bottom: 2px solid #e0c060; font-weight: bold; }
   .chip { display: inline-block; background: #fdecea; color: #b3261e; border: 1px solid #f3b8b3; border-radius: 12px; padding: 1px 9px; margin: 0 4px 4px 0; font-size: 12px; font-weight: normal; }
   .chip.good { background: #e6f4ea; color: #1e7e34; border-color: #a8d5b5; }
   button.go { background: #1e7e34; border-color: #145a25; font-size: 17px; font-weight: bold; padding: 12px 14px; width: 100%; }
@@ -246,9 +250,17 @@ function recalc() {
     math = rateMath(rate, $('unit').value === 'kg', inc === 'incl', t, qKg);
     var tot = math.exKg * qKg;
     calc.className = 'calc';
-    calc.innerHTML = 'Tax ' + esc(taxCode) + ' = <b>' + t + '%</b> &nbsp;|&nbsp; per kg: <b>' + f2(math.exKg) + '</b> before tax, <b>' + f2(math.inclKg) + '</b> with tax' +
-      '<br>For ' + qKg + ' kg: <b>' + f2(tot) + '</b> before tax + tax <b>' + f2(tot * t / 100) + '</b> = <b>' + f2(tot * (1 + t / 100)) + '</b> total' +
-      (rows.length ? '<br>' + rows.map(function (r) { return sizeLabel(r.p.g) + ' pack: <b>' + f2(round4(math.inclKg * r.p.g / 1000)) + '</b> incl tax'; }).join(' &nbsp;·&nbsp; ') : '');
+    // calculator as a small table: per kg / whole quantity, then one row per pack size
+    var ct = '<table class="ct"><tr><th></th><th class="n">Before tax</th><th class="n">Tax ' + t + '%</th><th class="n">With tax</th></tr>' +
+      '<tr><td>Per kg</td><td class="n">' + f2(math.exKg) + '</td><td class="n">' + f2(math.inclKg - math.exKg) + '</td><td class="n"><b>' + f2(math.inclKg) + '</b></td></tr>' +
+      '<tr class="cq"><td>' + qKg + ' kg</td><td class="n">' + f2(tot) + '</td><td class="n">' + f2(tot * t / 100) + '</td><td class="n"><b>' + f2(tot * (1 + t / 100)) + '</b></td></tr>';
+    rows.forEach(function (r) {
+      var ex1 = math.exKg * r.p.g / 1000;
+      ct += '<tr><td>' + sizeLabel(r.p.g) + ' pack <span class="muted">× ' + r.packs + '</span></td><td class="n">' + f2(ex1) + '</td><td class="n">' + f2(ex1 * t / 100) +
+        '</td><td class="n"><b>' + f2(round4(math.inclKg * r.p.g / 1000)) + '</b></td></tr>';
+    });
+    calc.className = 'calc';
+    calc.innerHTML = ct + '</table><div class="muted" style="margin-top:3px">Tax code ' + esc(taxCode) + ' · pack prices = Net Unit Cost per pack</div>';
   } else {
     calc.className = 'calc muted';
     calc.textContent = 'Type the rate, choose including / excluding tax and the tax code.';
