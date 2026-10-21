@@ -76,3 +76,31 @@ function lpWrite(lines) {
 
 // "Download XLSX" button of the window: same checks + file as the menu item.
 function lpDownload() { return pcMakeFile_(); }
+
+// ✎ in the window: change packs / cost / tax of a line already in the sheet (row must still hold the same product).
+function lpUpdate(row, dd, v) {
+  const sh = lpRowCheck_(row, dd);
+  if (!(v.packs > 0) || !(v.cost >= 0)) throw new Error('Packs and cost are not valid.');
+  if (v.tax && pcTaxCodes_().indexOf(v.tax) < 0) throw new Error('Tax code "' + v.tax + '" is not a POS code.');
+  sh.getRange(row, 4).setValue(v.packs);
+  sh.getRange(row, 6).setValue(v.tax || '');
+  sh.getRange(row, 11).setValue(v.cost);
+  SpreadsheetApp.flush();
+  return true;
+}
+
+// ✕ on a line already in the sheet: empties that row's typed cells (the formulas stay; rows below do not move).
+function lpClear(row, dd) {
+  const sh = lpRowCheck_(row, dd);
+  [1, 4, 5, 6, 7, 8, 11].forEach(c => sh.getRange(row, c).clearContent());
+  SpreadsheetApp.flush();
+  return true;
+}
+
+function lpRowCheck_(row, dd) {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
+  if (!sh) throw new Error('The Purchase CSV sheet is missing.');
+  if (row < PC_FIRST_ || row > PC_FIRST_ + PC_ROWS_ - 1) throw new Error('Row ' + row + ' is outside the purchase lines.');
+  if (String(sh.getRange(row, 1).getValue()).trim() !== String(dd).trim()) throw new Error('Row ' + row + ' in the sheet is not this product any more - change it in the sheet.');
+  return sh;
+}

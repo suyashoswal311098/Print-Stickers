@@ -5,80 +5,91 @@
 <meta charset="utf-8">
 <style>
   * { box-sizing: border-box; }
-  body { font-family: Arial, sans-serif; font-size: 13px; margin: 0; padding: 12px; color: #202124; }
-  .card { border: 1px solid #dadce0; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
-  h3 { margin: 0 0 8px; font-size: 14px; color: #1f3d66; }
-  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 8px; }
-  label { display: flex; flex-direction: column; font-weight: bold; font-size: 12px; gap: 3px; }
-  input[type=text], select { font-size: 14px; padding: 6px 8px; border: 1px solid #aaa; border-radius: 4px; }
-  #q { width: 360px; } #qty { width: 120px; } #rate { width: 120px; }
+  html, body { height: 100%; }
+  body { font-family: Arial, sans-serif; font-size: 13px; margin: 0; padding: 8px 10px; color: #202124; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  label { display: flex; flex-direction: column; font-weight: bold; font-size: 11px; gap: 2px; color: #444; }
+  input[type=text], select { font-size: 14px; padding: 5px 7px; border: 1px solid #aaa; border-radius: 4px; }
+  input:focus, select:focus { outline: 2px solid #4a86c8; }
+  #top { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; background: #f1f5fb; border: 1px solid #c8d3e3; border-radius: 8px; padding: 8px; }
+  #q { width: 200px; } #qty { width: 80px; } #rate { width: 80px; } #unit { width: 100px; } #tax { width: 112px; }
+  .seg { display: flex; } .seg label { flex-direction: row; font-size: 13px; font-weight: bold; margin: 0; padding: 6px 8px; border: 1px solid #1f3d66; color: #1f3d66; cursor: pointer; background: #fff; }
+  .seg label:first-child { border-radius: 4px 0 0 4px; } .seg label:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
+  .seg input { position: absolute; opacity: 0; width: 0; height: 0; } .seg label { position: relative; } .seg label.on { background: #1f3d66; color: #fff; }
+  #main { display: flex; gap: 10px; min-height: 0; flex: 0 1 auto; max-height: 48%; }
+  #left { flex: 1 1 60%; min-width: 0; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; padding: 6px 8px; }
+  #right { flex: 1 1 40%; min-width: 250px; display: flex; flex-direction: column; gap: 6px; }
+  #listbox { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; border: 1px solid #dadce0; border-radius: 8px; padding: 6px 8px; }
+  #listscroll { flex: 1; overflow: auto; min-height: 0; }
   table { border-collapse: collapse; width: 100%; }
-  th { background: #4a86c8; color: #fff; padding: 5px 6px; text-align: left; font-size: 12px; }
-  td { border-bottom: 1px solid #e3e3e3; padding: 4px 6px; }
+  th { background: #4a86c8; color: #fff; padding: 3px 6px; text-align: left; font-size: 11px; position: sticky; top: 0; }
+  td { border-bottom: 1px solid #e3e3e3; padding: 2px 6px; }
   td.n, th.n { text-align: right; }
-  .kg { width: 90px; text-align: right; }
+  .kg { width: 80px; text-align: right; padding: 3px 6px; font-size: 13px; }
+  .ed { width: 70px; text-align: right; padding: 2px 4px; font-size: 13px; }
   .muted { color: #777; font-size: 12px; }
   .err { color: #c00; font-weight: bold; }
   .ok { color: #1e8e3e; font-weight: bold; }
-  .calc { background: #fff8e1; border: 1px solid #f0d98a; border-radius: 6px; padding: 8px 10px; margin: 8px 0; line-height: 1.6; }
-  button { font-size: 13px; padding: 7px 14px; border: 1px solid #1f3d66; background: #1f3d66; color: #fff; border-radius: 4px; cursor: pointer; }
+  .calc { background: #fff8e1; border: 1px solid #f0d98a; border-radius: 6px; padding: 6px 9px; line-height: 1.5; flex: 1; overflow: auto; }
+  button { font-size: 13px; padding: 6px 12px; border: 1px solid #1f3d66; background: #1f3d66; color: #fff; border-radius: 4px; cursor: pointer; }
   button.sec { background: #fff; color: #1f3d66; }
-  button.mini { padding: 2px 8px; font-size: 12px; }
+  button.mini { padding: 1px 7px; font-size: 12px; }
   button:disabled { opacity: .45; cursor: default; }
-  .radio { flex-direction: row; align-items: center; gap: 4px; font-weight: normal; font-size: 13px; }
-  .grp { display: block; width: 100%; text-align: left; background: #fff; color: #202124; border: 1px solid #c8d3e3; margin-bottom: 4px; padding: 6px 10px; }
+  button.big { font-size: 15px; padding: 9px 14px; }
+  .radio { flex-direction: row; align-items: center; gap: 4px; font-weight: normal; font-size: 12px; }
+  .grp { display: block; width: 100%; text-align: left; background: #fff; color: #202124; border: 1px solid #c8d3e3; margin-bottom: 3px; padding: 4px 9px; }
   .grp.sel { background: #e8f0fe; border-color: #1f3d66; font-weight: bold; }
   .tot td { font-weight: bold; border-top: 2px solid #999; }
+  .editing td { background: #fff8e1; }
+  .bar { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
 
-<div class="card">
-  <h3>1. What did you buy (loose)?</h3>
-  <div class="row">
-    <label>Product (name, no size) <input type="text" id="q" placeholder="e.g. premium jumbo walnut" autocomplete="off"></label>
-    <label>Quantity bought <input type="text" id="qty" placeholder="10kg" autocomplete="off"></label>
-  </div>
-  <div id="hint" class="muted">Loading products…</div>
-  <div id="groups" style="margin:6px 0"></div>
-  <table id="vt" style="display:none">
-    <thead><tr><th>Pack size</th><th>Product</th><th class="n">NPP</th><th class="n">kg for this size</th><th class="n">Packs</th><th></th></tr></thead>
-    <tbody id="vb"></tbody>
-  </table>
-  <div id="rem" style="margin-top:6px"></div>
+<div id="top">
+  <label>Product (name, no size) <input type="text" id="q" placeholder="premium jumbo walnut" autocomplete="off"></label>
+  <label>Quantity <input type="text" id="qty" placeholder="10kg" autocomplete="off"></label>
+  <label>Rate <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
+  <label>Rate is <select id="unit"><option value="kg">per kg</option><option value="all">whole qty</option></select></label>
+  <label>Tax code <select id="tax"></select></label>
+  <div><div class="muted" style="font-size:11px;font-weight:bold;color:#444">Rate…</div>
+    <div class="seg" id="seg"><label id="sIncl"><input type="radio" name="inc" value="incl">INCLUDES tax</label><label id="sExcl"><input type="radio" name="inc" value="excl">EXCLUDES tax</label></div></div>
 </div>
 
-<div class="card">
-  <h3>2. Rate and tax</h3>
-  <div class="row">
-    <label>Rate <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
-    <label>Rate is
-      <select id="unit"><option value="kg">per kg</option><option value="all">for the whole quantity</option></select></label>
-    <label>Tax Rate Code <select id="tax"></select></label>
-    <div>
-      <label class="radio"><input type="radio" name="inc" value="incl"> Rate INCLUDES tax</label>
-      <label class="radio"><input type="radio" name="inc" value="excl"> Rate EXCLUDES tax (add tax on top)</label>
+<div id="main">
+  <div id="left">
+    <div id="hint" class="muted">Loading products…</div>
+    <div id="groups" style="margin:4px 0"></div>
+    <table id="vt" style="display:none">
+      <thead><tr><th>Size</th><th>Product</th><th class="n">NPP</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
+      <tbody id="vb"></tbody>
+    </table>
+    <div id="rem" style="margin-top:4px"></div>
+  </div>
+  <div id="right">
+    <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
+    <div id="errs" class="err" style="font-size:12px"></div>
+    <div class="bar" style="margin:0">
+      <button id="add" class="big" disabled>Add to list ⏎</button>
+      <label class="radio"><input type="checkbox" id="fast" checked> Fast: put in sheet at once</label>
     </div>
   </div>
-  <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
-  <div id="errs" class="err"></div>
-  <button id="add" disabled>Add to list ⏎</button>
-  <label class="radio" style="display:inline-flex;margin-left:12px"><input type="checkbox" id="fast" checked> Fast: put in the sheet right away</label>
 </div>
 
-<div class="card">
-  <h3>3. List for the sheet <span id="cnt" class="muted"></span></h3>
-  <table id="lt" style="display:none">
-    <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Cost / pack (ex tax)</th><th>Tax</th><th class="n">Total ex tax</th><th class="n">Total incl tax</th><th></th></tr></thead>
-    <tbody id="lb"></tbody>
-  </table>
-  <div id="lempty" class="muted">Nothing yet. Fill step 1 and 2, then click “Add to list”. You can add many products.</div>
-  <div style="margin-top:10px" class="row">
+<div id="listbox">
+  <div><b style="color:#1f3d66">List for the sheet</b> <span id="cnt" class="muted"></span></div>
+  <div id="listscroll">
+    <table id="lt" style="display:none">
+      <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Cost/pack ex tax</th><th>Tax</th><th class="n">Total ex tax</th><th class="n">Total incl tax</th><th></th></tr></thead>
+      <tbody id="lb"></tbody>
+    </table>
+    <div id="lempty" class="muted">Nothing yet. Fill the top row, give the kg per size, then “Add to list” (or press Enter).</div>
+  </div>
+  <div class="bar">
     <button id="put" disabled>Put in sheet</button>
     <button id="dl" class="sec">⬇ Download XLSX for POS</button>
     <span id="msg"></span>
+    <span id="dlbox"></span>
   </div>
-  <div id="dlbox" style="margin-top:6px"></div>
 </div>
 
 <script>
@@ -250,6 +261,7 @@ function addToList() {
   $('q').focus();
 }
 
+var editIdx = -1;
 function renderList() {
   var lb = $('lb'); lb.innerHTML = '';
   var ex = 0, inc = 0;
@@ -257,14 +269,23 @@ function renderList() {
     var e = it.packs * it.cost, g = e * (1 + it.t / 100);
     ex += e; inc += g;
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td>' + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(it.cost) + '</td><td>' + esc(it.tax) +
-      '</td><td class="n">' + f2(e) + '</td><td class="n">' + f2(g) + '</td><td>' +
-      (it.done ? '<span class="ok" title="in the sheet">✔</span>' : it.q ? '…' : '<button class="sec mini" data-del="' + i + '">✕</button>') + '</td>';
+    if (i === editIdx) {
+      tr.className = 'editing';
+      var opts = Object.keys(TAX).map(function (k) { return '<option' + (k === it.tax ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
+      tr.innerHTML = '<td>' + esc(it.dd) + '</td><td class="n"><input type="text" class="ed" id="ePk" value="' + it.packs + '"></td><td class="n"><input type="text" class="ed" id="eCost" value="' + it.cost + '"></td>' +
+        '<td><select id="eTax">' + opts + '</select></td><td colspan="2" class="muted" id="eErr"></td>' +
+        '<td style="white-space:nowrap"><button class="mini" data-save="' + i + '">✔ Save</button> <button class="sec mini" data-cancel="1">✕</button></td>';
+    } else {
+      var act = it.q ? '…' : '<button class="sec mini" data-edit="' + i + '" title="Change packs / cost / tax">✎</button> ' +
+        (it.sure ? '<button class="mini" data-del="' + i + '">sure?</button>' : '<button class="sec mini" data-del="' + i + '" title="Remove' + (it.done ? ' (empties its row in the sheet)' : '') + '">✕</button>');
+      tr.innerHTML = '<td>' + (it.done ? '<span class="ok" title="in the sheet">✔</span> ' : '') + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(it.cost) + '</td><td>' + esc(it.tax) +
+        '</td><td class="n">' + f2(e) + '</td><td class="n">' + f2(g) + '</td><td style="white-space:nowrap">' + act + '</td>';
+    }
     lb.appendChild(tr);
   });
   if (items.length) {
     var tr = document.createElement('tr'); tr.className = 'tot';
-    tr.innerHTML = '<td>Total (✔ = already in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(ex) + '</td><td class="n">' + f2(inc) + '</td><td></td>';
+    tr.innerHTML = '<td>Total (✔ = in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(ex) + '</td><td class="n">' + f2(inc) + '</td><td></td>';
     lb.appendChild(tr);
   }
   $('lt').style.display = items.length ? '' : 'none';
@@ -273,6 +294,32 @@ function renderList() {
   var pend = items.filter(function (it) { return !it.done && !it.q; }).length;
   $('put').disabled = !pend;
   $('put').textContent = pend ? 'Put ' + pend + ' line(s) in sheet' : 'Put in sheet';
+  if (editIdx >= 0 && $('ePk')) { $('ePk').focus(); $('ePk').select(); }
+}
+
+function saveEdit(i) {
+  var it = items[i]; if (!it) return;
+  var pk = Number($('ePk').value.replace(/,/g, '')), cost = Number($('eCost').value.replace(/,/g, '')), tax = $('eTax').value;
+  if (!(pk > 0) || Math.round(pk) !== pk) { $('eErr').innerHTML = '<span class="err">Packs: whole number above 0</span>'; return; }
+  if (!(cost >= 0) || $('eCost').value.trim() === '') { $('eErr').innerHTML = '<span class="err">Cost: a number</span>'; return; }
+  var apply = function () { it.packs = pk; it.cost = cost; it.tax = tax; it.t = TAX[tax]; editIdx = -1; renderList(); };
+  if (!it.done) { apply(); return; }
+  it.q = true; setMsg('Updating the sheet…');
+  google.script.run
+    .withSuccessHandler(function () { it.q = false; apply(); setMsg('<span class="ok">✔ Sheet row ' + it.row + ' updated.</span>'); })
+    .withFailureHandler(function (e) { it.q = false; renderList(); setMsg('<span class="err">' + esc(e.message) + '</span>'); })
+    .lpUpdate(it.row, it.dd, { packs: pk, cost: cost, tax: tax });
+}
+
+function delItem(i) {
+  var it = items[i]; if (!it || it.q) return;
+  if (!it.done) { items.splice(i, 1); editIdx = -1; renderList(); return; }
+  if (!it.sure) { items.forEach(function (x) { x.sure = false; }); it.sure = true; renderList(); return; }
+  it.q = true; renderList(); setMsg('Emptying the sheet row…');
+  google.script.run
+    .withSuccessHandler(function () { items.splice(items.indexOf(it), 1); renderList(); setMsg('<span class="ok">✔ Removed; its sheet row was emptied.</span>'); })
+    .withFailureHandler(function (e) { it.q = false; it.sure = false; renderList(); setMsg('<span class="err">' + esc(e.message) + '</span>'); })
+    .lpClear(it.row, it.dd);
 }
 
 function setMsg(html) { $('msg').innerHTML = html; }
@@ -291,7 +338,7 @@ function pump() {
   setMsg('Writing ' + arr.length + ' line(s)…');
   google.script.run
     .withSuccessHandler(function (r) {
-      arr.forEach(function (it) { it.done = true; it.q = false; });
+      arr.forEach(function (it, k) { it.done = true; it.q = false; it.row = r.first + k; });
       writing = false; renderList();
       setMsg('<span class="ok">✔ ' + arr.length + ' line(s) in the sheet, rows ' + r.first + '–' + r.last + '.</span>');
       pump();
@@ -340,7 +387,7 @@ $('tax').addEventListener('change', recalc);
 Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r.addEventListener('change', recalc); });
 $('groups').addEventListener('click', function (e) {
   var b = e.target.closest ? e.target.closest('[data-g]') : null; if (!b) return;
-  selGroup = b.getAttribute('data-g'); kgs = {}; renderVariants();
+  selGroup = b.getAttribute('data-g'); kgs = {}; renderVariants(); $('qty').focus();
 });
 $('vb').addEventListener('input', function (e) { var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; recalc(); } });
 $('vb').addEventListener('click', function (e) {
@@ -350,13 +397,49 @@ $('vb').addEventListener('click', function (e) {
   var left = Math.round((qKg - other) * 1e6) / 1e6;
   if (left > 0) { kgs[c] = String(left); var inp = document.querySelector('input[data-c="' + CSS.escape(c) + '"]'); if (inp) inp.value = kgs[c]; recalc(); }
 });
-$('lb').addEventListener('click', function (e) { var i = e.target.getAttribute('data-del'); if (i === null) return; if (items[Number(i)] && !items[Number(i)].done && !items[Number(i)].q) items.splice(Number(i), 1); renderList(); });
+$('lb').addEventListener('click', function (e) {
+  var t = e.target, v;
+  if ((v = t.getAttribute('data-edit')) !== null) { editIdx = Number(v); renderList(); }
+  else if ((v = t.getAttribute('data-save')) !== null) saveEdit(Number(v));
+  else if (t.getAttribute('data-cancel')) { editIdx = -1; renderList(); }
+  else if ((v = t.getAttribute('data-del')) !== null) delItem(Number(v));
+});
+$('lb').addEventListener('keydown', function (e) {
+  if (editIdx < 0) return;
+  if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); saveEdit(editIdx); }
+  else if (e.key === 'Escape') { editIdx = -1; renderList(); }
+});
 try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } catch (e) {}
 $('fast').addEventListener('change', function () { try { localStorage.setItem('lp_fast', $('fast').checked ? '1' : '0'); } catch (e) {} });
 $('add').addEventListener('click', addToList);
 $('put').addEventListener('click', putInSheet);
 $('dl').addEventListener('click', download);
-document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !$('add').disabled && e.target.tagName === 'INPUT') { e.preventDefault(); addToList(); } });
+function kgInputs() { return Array.prototype.slice.call(document.querySelectorAll('input.kg')); }
+$('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); clearTimeout(qTimer); renderVariants(); $('qty').focus(); $('qty').select(); } });
+$('qty').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); var k = kgInputs(); (k[0] || $('rate')).focus(); } });
+// Enter in a kg box: empty = put all remaining kg there; then jump to the next box, after the last one to Rate
+$('vb').addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter' || !e.target.getAttribute('data-c')) return;
+  e.preventDefault(); e.stopPropagation();
+  var c = e.target.getAttribute('data-c');
+  if (!e.target.value.trim()) {
+    var qKg = qtyG() / 1000, other = 0;
+    cands.forEach(function (p) { if (p.code !== c) other += (parseSum(kgs[p.code] || '', true) || 0) / 1000; });
+    var left = Math.round((qKg - other) * 1e6) / 1e6;
+    if (left > 0) { kgs[c] = String(left); e.target.value = kgs[c]; recalc(); }
+  }
+  var used = 0; cands.forEach(function (p) { used += (parseSum(kgs[p.code] || '', true) || 0) / 1000; });
+  var k = kgInputs(), at = k.indexOf(e.target);
+  // everything split -> straight to Rate, else the next size
+  (Math.abs(qtyG() / 1000 - used) < 1e-9 || !k[at + 1] ? $('rate') : k[at + 1]).focus();
+});
+document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !$('add').disabled && (e.target.tagName === 'INPUT' || e.target === document.body) && editIdx < 0) { e.preventDefault(); addToList(); } });
+// segmented buttons look + remember last choices
+function paintSeg() { var v = (document.querySelector('input[name=inc]:checked') || {}).value; $('sIncl').className = v === 'incl' ? 'on' : ''; $('sExcl').className = v === 'excl' ? 'on' : ''; }
+Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r.addEventListener('change', function () { paintSeg(); try { localStorage.setItem('lp_inc', r.value); } catch (e) {} }); });
+$('tax').addEventListener('change', function () { try { localStorage.setItem('lp_tax', $('tax').value); } catch (e) {} });
+$('unit').addEventListener('change', function () { try { localStorage.setItem('lp_unit', $('unit').value); } catch (e) {} });
+
 
 // a size typed in the product box and no quantity yet: show it as the quantity hint
 $('q').addEventListener('blur', function () { if (!$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; recalc(); } } });
@@ -367,6 +450,12 @@ function init(d) {
   var sel = $('tax'); sel.innerHTML = '<option value="">– choose –</option>';
   d.taxes.forEach(function (t) { var o = document.createElement('option'); o.value = t[0]; o.textContent = t[0] + '  (' + t[1] + '%)'; sel.appendChild(o); });
   if (d.defTax && TAX[d.defTax] !== undefined) sel.value = d.defTax;
+  try {
+    var st = localStorage.getItem('lp_tax'); if (st && TAX[st] !== undefined) sel.value = st;
+    var si = localStorage.getItem('lp_inc'); if (si) { var rr = document.querySelector('input[name=inc][value=' + si + ']'); if (rr) rr.checked = true; }
+    var su = localStorage.getItem('lp_unit'); if (su) $('unit').value = su;
+  } catch (e) {}
+  paintSeg();
   loaded = true; renderVariants();
 }
 if (window.google && google.script) {
