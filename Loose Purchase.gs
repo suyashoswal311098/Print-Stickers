@@ -2,7 +2,8 @@
  * Product Tools → Purchase CSV for POS → "Add loose purchase…" opens "Loose Purchase Dialog".
  * The window does the thinking (find the pack sizes in the product names, split the kg, tax calculator).
  * This file only (1) hands the window the Product List and (2) writes the finished lines into the sheet:
- *   A = dropdown text "barcode name", D = packs, F = tax code, K = Cost override (cost per pack, tax excluded).
+ *   A = dropdown text "barcode name", D = packs, F = tax code, K = Cost override (cost per pack INCLUDING tax; the window
+ *   works ex tax and the server adds the tax with pcInclCost_).
  * B / C / I / J / L are the header-row formulas of the sheet and are never written here.
  */
 
@@ -69,7 +70,7 @@ function lpWrite(lines) {
   sh.getRange(first, 1, n, 1).setValues(lines.map(l => [l.dd]));
   sh.getRange(first, 4, n, 1).setValues(lines.map(l => [l.packs]));
   sh.getRange(first, 6, n, 1).setValues(lines.map(l => [l.tax || '']));
-  sh.getRange(first, 11, n, 1).setValues(lines.map(l => [l.cost]));
+  sh.getRange(first, 11, n, 1).setValues(lines.map(l => [pcInclCost_(l.cost, l.tax)]));   // K = cost per pack INCLUDING tax (the window works ex tax)
   SpreadsheetApp.flush();
   return { first: first, last: last };
 }
@@ -84,7 +85,7 @@ function lpUpdate(row, dd, v) {
   if (v.tax && pcTaxCodes_().indexOf(v.tax) < 0) throw new Error('Tax code "' + v.tax + '" is not a POS code.');
   sh.getRange(row, 4).setValue(v.packs);
   sh.getRange(row, 6).setValue(v.tax || '');
-  sh.getRange(row, 11).setValue(v.cost);
+  sh.getRange(row, 11).setValue(pcInclCost_(v.cost, v.tax));
   SpreadsheetApp.flush();
   return true;
 }
