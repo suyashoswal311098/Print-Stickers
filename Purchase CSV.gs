@@ -234,6 +234,15 @@ function pcXlsxBytes_(aoa, sheetName, textCols) {
   return Array.prototype.map.call(u8, b => b > 127 ? b - 256 : b);
 }
 
+// .xls (Excel 97-2003, biff8) bytes exactly like exportProductsToXlsx: blanks = empty cells, codes are strings.
+function pcXlsBytes_(aoa) {
+  const lib = sheetJs_();
+  const wb = lib.utils.book_new();
+  lib.utils.book_append_sheet(wb, lib.utils.aoa_to_sheet(aoa), 'Worksheet');
+  const u8 = new Uint8Array(lib.write(wb, { bookType: 'biff8', type: 'array' }));
+  return Array.prototype.map.call(u8, b => b > 127 ? b - 256 : b);
+}
+
 // Product import sheet (same columns as Export Products to XLS: Code, Product Name, Article Code, Price, MRP,
 // Variants_Name, Variants_Price) for the products on the purchase lines. pl = {bar, name, npp, mrp} parallel
 // arrays of the Product List (bar as displayed). One row per product, in the order of the lines.
@@ -294,7 +303,9 @@ function pcBuildFiles() {
     count: res.rows.length,
     products: prodAoa.length - 1,
     files: [
-      { name: 'Products_' + stamp + '.xlsx', mime: PC_XLSX_MIME_, b64: enc(pcXlsxBytes_(prodAoa, 'Worksheet', ['A', 'C'])) },
+      // same format as Product Tools → Export Products to XLS (.xls Excel 97-2003, sheet "Worksheet"), which the POS
+      // product import already reads; an .xlsx of the same rows came in with NPP / MRP = 0 (23 Oct, user)
+      { name: 'Products_' + stamp + '.xls', mime: 'application/vnd.ms-excel', b64: enc(pcXlsBytes_(prodAoa)) },
       { name: 'Purchase_' + stamp + '.xlsx', mime: PC_XLSX_MIME_, b64: enc(pcXlsxBytes_(pcAoa_(res.rows))) }
     ]
   };
