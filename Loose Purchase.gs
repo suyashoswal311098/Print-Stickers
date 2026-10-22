@@ -1,4 +1,5 @@
-/***** LOOSE PURCHASE — buy by weight, split into the Product List's pack sizes, put the lines in "Purchase CSV" *****
+/***** PURCHASE WINDOW — LOOSE (buy by weight, split into the Product List's pack sizes) or PACKED (scan barcode /
+ * type name, packs + rate per pack); both put the lines in "Purchase CSV" *****
  * Product Tools → Purchase CSV for POS → "Add loose purchase…" opens "Loose Purchase Dialog".
  * The window does the thinking (find the pack sizes in the product names, split the kg, tax calculator).
  * This file only (1) hands the window the Product List and (2) writes the finished lines into the sheet:
@@ -12,7 +13,7 @@ function openLoosePurchase() {
   if (!ss.getSheetByName(PC_SHEET_)) { SpreadsheetApp.getUi().alert('Run Product Tools → Purchase CSV for POS → Set up / repair sheet first.'); return; }
   pcEnsureLayout_();   // old sheet formulas → repaired first (lines kept)
   const html = HtmlService.createHtmlOutputFromFile('Loose Purchase Dialog').setWidth(1000).setHeight(800);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Loose purchase');
+  SpreadsheetApp.getUi().showModalDialog(html, 'Purchase - loose (kg) or packed (pcs)');
 }
 
 // Product List for the window: [[barcode, name, NPP, dropdown text, MRP], …] + tax codes + default tax.

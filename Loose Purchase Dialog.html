@@ -11,7 +11,7 @@
   input[type=text], select { font-size: 14px; padding: 5px 7px; border: 1px solid #aaa; border-radius: 4px; }
   input:focus, select:focus { outline: 2px solid #4a86c8; }
   #top { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; background: #f1f5fb; border: 1px solid #c8d3e3; border-radius: 8px; padding: 8px; }
-  #q { width: 200px; } #qty { width: 80px; } #rate { width: 80px; } #unit { width: 100px; } #tax { width: 112px; }
+  #q { width: 190px; } #qty { width: 80px; } #rate { width: 80px; } #unit { width: 100px; } #tax { width: 112px; }
   .seg { display: flex; } .seg label { flex-direction: row; font-size: 13px; font-weight: bold; margin: 0; padding: 6px 8px; border: 1px solid #1f3d66; color: #1f3d66; cursor: pointer; background: #fff; }
   .seg label:first-child { border-radius: 4px 0 0 4px; } .seg label:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
   .seg input { position: absolute; opacity: 0; width: 0; height: 0; } .seg label { position: relative; } .seg label.on { background: #1f3d66; color: #fff; }
@@ -40,6 +40,8 @@
   .radio { flex-direction: row; align-items: center; gap: 4px; font-weight: normal; font-size: 12px; }
   .grp { display: block; width: 100%; text-align: left; background: #fff; color: #202124; border: 1px solid #c8d3e3; margin-bottom: 3px; padding: 4px 9px; }
   .grp.sel { background: #e8f0fe; border-color: #1f3d66; font-weight: bold; }
+  tr.psel td { background: #e8f0fe; font-weight: bold; }
+  #pb tr { cursor: pointer; }
   .tot td { font-weight: bold; border-top: 2px solid #999; }
   .editing td { background: #fff8e1; }
   .ct { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -56,10 +58,12 @@
 <body>
 
 <div id="top">
-  <label>Product (name, no size) <input type="text" id="q" placeholder="premium jumbo walnut" autocomplete="off"></label>
-  <label>Quantity <input type="text" id="qty" placeholder="10kg" autocomplete="off"></label>
-  <label>Rate <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
-  <label>Rate is <select id="unit"><option value="kg">per kg</option><option value="all">whole qty</option></select></label>
+  <div><div class="muted" style="font-size:11px;font-weight:bold;color:#444">Buying</div>
+    <div class="seg" id="mseg"><label id="mLoose" title="bought by weight, split into pack sizes"><input type="radio" name="mode" value="loose">LOOSE kg</label><label id="mPacked" title="ready packs: scan the barcode or type the name"><input type="radio" name="mode" value="packed">PACKED pcs</label></div></div>
+  <label><span id="qL">Product (name, no size)</span> <input type="text" id="q" placeholder="premium jumbo walnut" autocomplete="off"></label>
+  <label><span id="qtyL">Quantity</span> <input type="text" id="qty" placeholder="10kg" autocomplete="off"></label>
+  <label><span id="rateL">Rate</span> <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
+  <label id="unitL">Rate is <select id="unit"><option value="kg">per kg</option><option value="all">whole qty</option></select></label>
   <label>Tax code <select id="tax"></select></label>
   <div><div class="muted" style="font-size:11px;font-weight:bold;color:#444">Rate…</div>
     <div class="seg" id="seg"><label id="sIncl"><input type="radio" name="inc" value="incl">INCLUDES tax</label><label id="sExcl"><input type="radio" name="inc" value="excl">EXCLUDES tax</label></div></div>
@@ -70,6 +74,10 @@
     <div class="bar" id="lefttop" style="margin:0 0 4px;position:sticky;top:-6px;background:#fff;z-index:3;padding:2px 0"><button id="eq" class="sec" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><span id="rem"></span></div>
     <div id="hint" class="muted">Loading products…</div>
     <div id="groups" style="margin:4px 0"></div>
+    <table id="pt" style="display:none">
+      <thead><tr><th>Barcode</th><th>Product</th><th class="n" title="change or fill in - saved in Product List when you Add to list">NPP ✎</th><th class="n" title="change or fill in - saved in Product List when you Add to list">MRP ✎</th><th></th></tr></thead>
+      <tbody id="pb"></tbody>
+    </table>
     <table id="vt" style="display:none">
       <thead><tr><th title="tick = included in Split equal"></th><th>Size</th><th>Product</th><th class="n" title="change or fill in - saved in Product List when you Add to list">NPP ✎</th><th class="n" title="change or fill in - saved in Product List when you Add to list">MRP ✎</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
       <tbody id="vb"></tbody>
@@ -170,7 +178,91 @@ function findCands() {
   groups.forEach(function (g) { if (g.base === selGroup) cands = g.items.slice(0, 40); });
 }
 
+// ---------- PACKED mode: scan a barcode or type a name, pick ONE product, type packs + rate per pack ----------
+var mode = 'loose', pres = [], psel = null;
+function findPacked() {
+  var t = $('q').value.trim(); pres = [];
+  if (!loaded || !t) { psel = null; return; }
+  var bk = /^\d+$/.test(t) ? t.replace(/^0+/, '') : null;
+  if (bk !== null) pres = P.filter(function (p) { return String(p.code).replace(/^0+/, '') === bk; });   // scanned / typed barcode
+  if (!pres.length) {
+    var toks = t.toUpperCase().split(/[^A-Z0-9.]+/).filter(Boolean);
+    pres = P.filter(function (p) {
+      return toks.every(function (k) { return p.words.some(function (w) { return w.indexOf(k) === 0; }) || String(p.code).indexOf(k) === 0; });
+    }).slice(0, 40);
+  }
+  if (pres.length === 1) psel = pres[0];
+  if (psel && pres.indexOf(psel) < 0) psel = null;
+}
+function renderPacked() {
+  findPacked();
+  var pb = $('pb'); pb.innerHTML = '';
+  var hint = $('hint');
+  if (!loaded) hint.textContent = 'Loading products…';
+  else if (!$('q').value.trim()) hint.textContent = 'Scan the barcode (or type the barcode / name). Then type the number of packs and the rate per pack.';
+  else if (!pres.length) hint.innerHTML = '<span class="err">No product with this barcode / name.</span>';
+  else if (!psel) hint.textContent = pres.length + ' products match - click the one you bought.';
+  else hint.textContent = '✔ ' + psel.name + ' - type packs and rate per pack.';
+  $('pt').style.display = pres.length ? '' : 'none';
+  pres.forEach(function (p) {
+    var tr = document.createElement('tr'); tr.setAttribute('data-pick', p.code);
+    if (p === psel) tr.className = 'psel';
+    tr.innerHTML = '<td style="white-space:nowrap">' + esc(p.code) + '</td><td>' + esc(p.name) + '</td>' + priceCell(p, 'npp') + priceCell(p, 'mrp') +
+      '<td>' + (p === psel ? '<span class="ok">✔</span>' : '<button class="sec mini" data-pick="' + esc(p.code) + '">pick</button>') + '</td>';
+    pb.appendChild(tr);
+  });
+  recalc();
+}
+function recalcPacked() {
+  var errs = [];
+  var qv = $('qty').value.replace(/,/g, '').trim(), packs = qv !== '' && isFinite(qv) ? Number(qv) : NaN;
+  if (!$('q').value.trim() || !pres.length) errs.push('Scan or type a product');
+  else if (!psel) errs.push('Click the product you bought');
+  if (isNaN(packs) || packs <= 0) errs.push('Packs missing');
+  else if (Math.round(packs) !== packs) errs.push('Packs: whole number');
+  var rate = numOf('rate'), inc = (document.querySelector('input[name=inc]:checked') || {}).value, taxCode = $('tax').value;
+  if (isNaN(rate) || rate <= 0) errs.push('Rate per pack missing');
+  if (!inc) errs.push('Choose: rate includes tax or excludes tax');
+  if (!taxCode) errs.push('Choose the Tax Rate Code');
+  var calc = $('calc'), ok = false, t = TAX[taxCode], ex = 0;
+  if (!isNaN(rate) && rate > 0 && inc && taxCode) {
+    ex = inc === 'incl' ? rate / (1 + t / 100) : rate;
+    var n = packs > 0 ? packs : 0;
+    calc.className = 'calc';
+    calc.innerHTML = '<table class="ct"><tr><th></th><th class="n">Before tax</th><th class="n">Tax ' + t + '%</th><th class="n">With tax</th></tr>' +
+      '<tr><td>Per pack</td><td class="n">' + f2(ex) + '</td><td class="n">' + f2(ex * t / 100) + '</td><td class="n"><b>' + f2(ex * (1 + t / 100)) + '</b></td></tr>' +
+      (n ? '<tr class="cq"><td>' + n + ' pack' + (n > 1 ? 's' : '') + '</td><td class="n">' + f2(ex * n) + '</td><td class="n">' + f2(ex * n * t / 100) + '</td><td class="n"><b>' + f2(ex * n * (1 + t / 100)) + '</b></td></tr>' : '') +
+      '</table><div class="muted" style="margin-top:3px">Tax code ' + esc(taxCode) + ' · "With tax" per pack = Net Unit Cost</div>';
+    ok = true;
+  } else {
+    calc.className = 'calc muted';
+    calc.textContent = 'Type the rate per pack, choose including / excluding tax and the tax code.';
+  }
+  $('errs').innerHTML = errs.length ? errs.map(function (m) { return '<span class="chip">' + esc(m) + '</span>'; }).join('') : '<span class="chip good">✔ Ready - press Enter or click Add to list</span>';
+  $('add').disabled = errs.length > 0 || !ok;
+  return (errs.length || !ok) ? null : { p: psel, packs: packs, ex: ex, tax: taxCode, t: t };
+}
+function setMode(m) {
+  mode = m === 'packed' ? 'packed' : 'loose';
+  try { localStorage.setItem('lp_mode', mode); } catch (e) {}
+  var pk = mode === 'packed';
+  $('mLoose').className = pk ? '' : 'on'; $('mPacked').className = pk ? 'on' : '';
+  document.querySelector('input[name=mode][value=' + mode + ']').checked = true;
+  $('qL').textContent = pk ? 'Barcode or product name' : 'Product (name, no size)';
+  $('q').placeholder = pk ? 'scan / type barcode or name' : 'premium jumbo walnut';
+  $('qtyL').textContent = pk ? 'Packs' : 'Quantity';
+  $('qty').placeholder = pk ? '24' : '10kg';
+  $('rateL').textContent = pk ? 'Rate per pack' : 'Rate';
+  $('unitL').style.display = pk ? 'none' : '';
+  ['lefttop', 'groups', 'vt'].forEach(function (id) { $(id).style.display = pk ? 'none' : ''; });
+  if (!pk) $('pt').style.display = 'none';
+  psel = null; kgs = {}; $('q').value = ''; $('qty').value = '';
+  renderVariants(); $('q').focus();
+}
+
 function renderVariants() {
+  if (mode === 'packed') { renderPacked(); return; }
+  $('pt').style.display = 'none';
   findCands();
   var vb = $('vb'); vb.innerHTML = '';
   var hint = $('hint');
@@ -206,6 +298,7 @@ function renderVariants() {
 
 // returns the plan (or errors) and refreshes the live numbers
 function recalc() {
+  if (mode === 'packed') return recalcPacked();
   var errs = [], rows = [], sumKg = 0;
   var qG = qtyG(), qKg = qG / 1000;
   cands.forEach(function (p) {
@@ -282,7 +375,7 @@ function pnum(v) { v = String(v).replace(/,/g, '').trim(); return v !== '' && is
 // changed NPP / MRP of the products on screen → [{code, npp?, mrp?}] (blank or same value = no change)
 function priceChanges() {
   var out = [];
-  cands.forEach(function (p) {
+  (mode === 'packed' ? pres : cands).forEach(function (p) {
     var t = prices[p.code]; if (!t) return;
     var c = { code: p.code }, any = false;
     ['npp', 'mrp'].forEach(function (f) {
@@ -306,6 +399,16 @@ function savePrices(ch) {
 function addToList() {
   var pl = recalc();
   if (!pl) return;
+  if (mode === 'packed') {
+    var one = { dd: pl.p.dd, name: pl.p.name, packs: pl.packs, cost: round4(pl.ex), tax: pl.tax, t: pl.t, done: false, q: false };
+    items.push(one);
+    savePrices(priceChanges());
+    psel = null; $('q').value = ''; $('qty').value = ''; $('rate').value = '';
+    renderVariants(); renderList();
+    if ($('fast').checked) writeItems([one]);
+    $('q').focus();   // ready for the next scan
+    return;
+  }
   var fresh = [];
   pl.rows.forEach(function (r) {
     var cost = round4(pl.math.exKg * r.p.g / 1000);
@@ -459,6 +562,25 @@ $('groups').addEventListener('click', function (e) {
   var b = e.target.closest ? e.target.closest('[data-g]') : null; if (!b) return;
   selGroup = b.getAttribute('data-g'); kgs = {}; showAll = false; renderVariants(); $('qty').focus();
 });
+function priceInput(e) {
+  var f = e.target.getAttribute('data-pr'); if (!f) return false;
+  var c = e.target.getAttribute('data-pc'); prices[c] = prices[c] || {}; prices[c][f] = e.target.value;
+  var p = P.filter(function (x) { return x.code === c; })[0];
+  e.target.className = 'pr' + (p && pnum(e.target.value) !== (p[f] === '' ? null : Number(p[f])) ? ' chg' : '');
+  if (pnum(e.target.value) === null && e.target.value.trim() !== '') e.target.className = 'pr chg';
+  return true;
+}
+$('pb').addEventListener('input', priceInput);
+$('pb').addEventListener('click', function (e) {
+  if (e.target.getAttribute('data-pr')) return;   // typing in NPP / MRP is not a pick
+  var tr = e.target.closest ? e.target.closest('[data-pick]') : null; if (!tr) return;
+  var c = tr.getAttribute('data-pick');
+  psel = pres.filter(function (p) { return p.code === c; })[0] || null;
+  renderPacked(); $('qty').focus();
+});
+$('pb').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && e.target.getAttribute('data-pr')) { e.preventDefault(); e.stopPropagation(); $('qty').focus(); }
+});
 $('vb').addEventListener('input', function (e) {
   var f = e.target.getAttribute('data-pr');
   if (f) {
@@ -510,8 +632,13 @@ function splitEqual() {
 $('eq').addEventListener('click', splitEqual);
 $('vb').addEventListener('change', function (e) { var c = e.target.getAttribute('data-use'); if (c) useSz[c] = e.target.checked; });
 function kgInputs() { return Array.prototype.slice.call(document.querySelectorAll('input.kg')); }
-$('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); clearTimeout(qTimer); renderVariants(); $('qty').focus(); $('qty').select(); } });
-$('qty').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); var k = kgInputs(); (k[0] || $('rate')).focus(); } });
+$('q').addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault(); e.stopPropagation(); clearTimeout(qTimer); renderVariants();
+  if (mode === 'packed' && !psel) return;   // several matches: click one
+  $('qty').focus(); $('qty').select();
+});
+$('qty').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); var k = mode === 'packed' ? [] : kgInputs(); (k[0] || $('rate')).focus(); } });
 // Enter in a kg box: empty = put all remaining kg there; then jump to the next box, after the last one to Rate
 $('vb').addEventListener('keydown', function (e) {
   if (e.key === 'Enter' && e.target.getAttribute('data-pr')) {
@@ -535,6 +662,7 @@ $('vb').addEventListener('keydown', function (e) {
 });
 document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !$('add').disabled && (e.target.tagName === 'INPUT' || e.target === document.body) && editIdx < 0) { e.preventDefault(); addToList(); } });
 // segmented buttons look + remember last choices
+Array.prototype.forEach.call(document.getElementsByName('mode'), function (r) { r.addEventListener('change', function () { setMode(r.value); }); });
 function paintSeg() { var v = (document.querySelector('input[name=inc]:checked') || {}).value; $('sIncl').className = v === 'incl' ? 'on' : ''; $('sExcl').className = v === 'excl' ? 'on' : ''; }
 Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r.addEventListener('change', function () { paintSeg(); try { localStorage.setItem('lp_inc', r.value); } catch (e) {} }); });
 $('tax').addEventListener('change', function () { try { localStorage.setItem('lp_tax', $('tax').value); } catch (e) {} });
@@ -542,7 +670,7 @@ $('unit').addEventListener('change', function () { try { localStorage.setItem('l
 
 
 // a size typed in the product box and no quantity yet: show it as the quantity hint
-$('q').addEventListener('blur', function () { if (!$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; recalc(); } } });
+$('q').addEventListener('blur', function () { if (mode === 'loose' && !$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; recalc(); } } });
 
 function init(d) {
   P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], mrp: r[4] === undefined ? '' : r[4], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
@@ -556,7 +684,9 @@ function init(d) {
     var su = localStorage.getItem('lp_unit'); if (su) $('unit').value = su;
   } catch (e) {}
   paintSeg();
-  loaded = true; renderVariants();
+  loaded = true;
+  var sm = 'loose'; try { sm = localStorage.getItem('lp_mode') || 'loose'; } catch (e) {}
+  setMode(sm);
 }
 if (window.google && google.script) {
   google.script.run.withSuccessHandler(init).withFailureHandler(function (e) { $('hint').innerHTML = '<span class="err">' + esc(e.message) + '</span>'; }).lpGetData();

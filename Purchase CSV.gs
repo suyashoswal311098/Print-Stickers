@@ -34,7 +34,7 @@ function pcInclCost_(cost, taxCode) {
 
 // Layout version of the Purchase CSV sheet. Raise it whenever setupPurchaseSheet changes formulas/columns:
 // the LOOSE PURCHASE / DOWNLOAD buttons then repair the sheet by themselves (typed lines are kept).
-const PC_LAYOUT_VERSION_ = '4';   // 4 = Net Unit Cost incl tax, I total incl, M rate ex, N total ex
+const PC_LAYOUT_VERSION_ = '5';   // 4 = Net Unit Cost incl tax, I total incl, M rate ex, N total ex; 5 = ADD PURCHASE button picture
 function pcEnsureLayout_() {
   const props = PropertiesService.getDocumentProperties();
   if (props.getProperty('pc_layout') === PC_LAYOUT_VERSION_) return false;
