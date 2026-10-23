@@ -1,4 +1,5 @@
-/***** LOOSE PURCHASE — buy by weight, split into the Product List's pack sizes, put the lines in "Purchase CSV" *****
+/***** PURCHASE WINDOW — LOOSE (buy by weight, split into the Product List's pack sizes) or PACKED (scan barcode /
+ * type name, packs + rate per pack); both put the lines in "Purchase CSV" *****
  * Product Tools → Purchase CSV for POS → "Add loose purchase…" opens "Loose Purchase Dialog".
  * The window does the thinking (find the pack sizes in the product names, split the kg, tax calculator).
  * This file only (1) hands the window the Product List and (2) writes the finished lines into the sheet:
@@ -12,16 +13,16 @@ function openLoosePurchase() {
   if (!ss.getSheetByName(PC_SHEET_)) { SpreadsheetApp.getUi().alert('Run Product Tools → Purchase CSV for POS → Set up / repair sheet first.'); return; }
   pcEnsureLayout_();   // old sheet formulas → repaired first (lines kept)
   const html = HtmlService.createHtmlOutputFromFile('Loose Purchase Dialog').setWidth(1000).setHeight(800);
-  SpreadsheetApp.getUi().showModalDialog(html, 'Loose purchase');
+  SpreadsheetApp.getUi().showModalDialog(html, 'Purchase - loose (kg) or packed (pcs)');
 }
 
-// Product List for the window: [[barcode, name, NPP, dropdown text], …] + tax codes + default tax.
+// Product List for the window: [[barcode, name, NPP, dropdown text, MRP, shelf days], …] + tax codes + default tax.
 function lpGetData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const list = ss.getSheetByName('Product List');
   const n = Math.max(list.getLastRow() - 1, 1);
   const bn = list.getRange(2, 2, n, 2).getDisplayValues();
-  const npp = list.getRange(2, 5, n, 1).getValues();
+  const npp = list.getRange(2, 5, n, 3).getValues();   // E NPP, F MRP, G shelf life (days)
 
   // dropdown text ("barcode name") of the Print Console B2 list, by barcode
   const dd = {};
@@ -41,7 +42,7 @@ function lpGetData() {
   bn.forEach((r, i) => {
     const code = String(r[0]).trim(), name = String(r[1]).trim();
     if (!code || !name) return;
-    products.push([code, name, npp[i][0] === '' ? '' : Number(npp[i][0]), dd[normBar_(code)] || (code + ' ' + name)]);
+    products.push([code, name, npp[i][0] === '' ? '' : Number(npp[i][0]), dd[normBar_(code)] || (code + ' ' + name), npp[i][1] === '' ? '' : Number(npp[i][1]), Number(npp[i][2]) || '']);
   });
   const sh = ss.getSheetByName(PC_SHEET_);
   return {
@@ -71,7 +72,9 @@ function lpWrite(lines) {
   sh.getRange(first, 1, n, 1).setValues(lines.map(l => [l.dd]));
   sh.getRange(first, 4, n, 1).setValues(lines.map(l => [l.packs]));
   sh.getRange(first, 6, n, 1).setValues(lines.map(l => [l.tax || '']));
-  sh.getRange(first, 11, n, 1).setValues(lines.map(l => [pcInclCost_(l.cost, l.tax)]));   // K = cost per pack INCLUDING tax (the window works ex tax)
+  sh.getRange(first, 11, n, 1).setValues(lines.map(l => [pcInclCost_(l.cost, l.tax)]));
+  // H = Expiry (text MM/dd/yyyy, today + shelf life, worked out in the window); blank when no shelf life
+  sh.getRange(first, 8, n, 1).setNumberFormat('@').setValues(lines.map(l => [/^\d{2}\/\d{2}\/\d{4}$/.test(String(l.exp || '')) ? l.exp : '']));   // K = cost per pack INCLUDING tax (the window works ex tax)
   SpreadsheetApp.flush();
   return { first: first, last: last };
 }
@@ -105,4 +108,24 @@ function lpRowCheck_(row, dd) {
   if (row < PC_FIRST_ || row > PC_FIRST_ + PC_ROWS_ - 1) throw new Error('Row ' + row + ' is outside the purchase lines.');
   if (String(sh.getRange(row, 1).getValue()).trim() !== String(dd).trim()) throw new Error('Row ' + row + ' in the sheet is not this product any more - change it in the sheet.');
   return sh;
+}
+
+// NPP / MRP typed in the window (user's choice: also saved in Product List). changes = [{code, npp?, mrp?}];
+// only the given fields are written (E = NPP, F = MRP) in the first Product List row with that barcode. Returns rows changed.
+function lpSavePrices(changes) {
+  const list = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Product List');
+  const n = Math.max(list.getLastRow() - 1, 1);
+  const bars = list.getRange(2, 2, n, 1).getDisplayValues();
+  const at = {};
+  bars.forEach((r, i) => { const k = normBar_(r[0]); if (k && at[k] === undefined) at[k] = i + 2; });
+  let done = 0;
+  (changes || []).forEach(c => {
+    const row = at[normBar_(c.code)];
+    if (!row) return;
+    const ok = v => typeof v === 'number' && isFinite(v) && v >= 0;
+    if (ok(c.npp)) list.getRange(row, 5).setValue(c.npp);
+    if (ok(c.mrp)) list.getRange(row, 6).setValue(c.mrp);
+    if (ok(c.npp) || ok(c.mrp)) done++;
+  });
+  return done;
 }

@@ -11,7 +11,7 @@
   input[type=text], select { font-size: 14px; padding: 5px 7px; border: 1px solid #aaa; border-radius: 4px; }
   input:focus, select:focus { outline: 2px solid #4a86c8; }
   #top { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; background: #f1f5fb; border: 1px solid #c8d3e3; border-radius: 8px; padding: 8px; }
-  #q { width: 200px; } #qty { width: 80px; } #rate { width: 80px; } #unit { width: 100px; } #tax { width: 112px; }
+  #q { width: 165px; } #qty { width: 66px; } #rate { width: 70px; } #unit { width: 92px; } #tax { width: 104px; }
   .seg { display: flex; } .seg label { flex-direction: row; font-size: 13px; font-weight: bold; margin: 0; padding: 6px 8px; border: 1px solid #1f3d66; color: #1f3d66; cursor: pointer; background: #fff; }
   .seg label:first-child { border-radius: 4px 0 0 4px; } .seg label:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
   .seg input { position: absolute; opacity: 0; width: 0; height: 0; } .seg label { position: relative; } .seg label.on { background: #1f3d66; color: #fff; }
@@ -25,6 +25,8 @@
   td { border-bottom: 1px solid #e3e3e3; padding: 2px 6px; }
   td.n, th.n { text-align: right; }
   .kg { width: 80px; text-align: right; padding: 3px 6px; font-size: 13px; }
+  .pr { width: 62px; text-align: right; padding: 3px 4px; font-size: 12px; border: 1px dashed #aab; }
+  .pr.chg { background: #fff3c4; border: 1px solid #e0a800; }
   .ed { width: 70px; text-align: right; padding: 2px 4px; font-size: 13px; }
   .muted { color: #777; font-size: 12px; }
   .err { color: #c00; font-weight: bold; }
@@ -38,9 +40,16 @@
   .radio { flex-direction: row; align-items: center; gap: 4px; font-weight: normal; font-size: 12px; }
   .grp { display: block; width: 100%; text-align: left; background: #fff; color: #202124; border: 1px solid #c8d3e3; margin-bottom: 3px; padding: 4px 9px; }
   .grp.sel { background: #e8f0fe; border-color: #1f3d66; font-weight: bold; }
+  tr.psel td { background: #e8f0fe; font-weight: bold; }
+  #pb tr { cursor: pointer; }
   .tot td { font-weight: bold; border-top: 2px solid #999; }
   .editing td { background: #fff8e1; }
+  .ct { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ct th { background: #f0d98a; color: #5a4300; font-size: 11px; padding: 3px 6px; }
+  .ct td { border-bottom: 1px solid #f0e2b0; padding: 3px 6px; }
+  .ct tr.cq td { border-bottom: 2px solid #e0c060; font-weight: bold; }
   .chip { display: inline-block; background: #fdecea; color: #b3261e; border: 1px solid #f3b8b3; border-radius: 12px; padding: 1px 9px; margin: 0 4px 4px 0; font-size: 12px; font-weight: normal; }
+  .chip.warn { background: #fff4d6; color: #8a5a00; border-color: #f0cf7a; }
   .chip.good { background: #e6f4ea; color: #1e7e34; border-color: #a8d5b5; }
   button.go { background: #1e7e34; border-color: #145a25; font-size: 17px; font-weight: bold; padding: 12px 14px; width: 100%; }
   button.go:disabled { background: #9aa5b1; border-color: #9aa5b1; }
@@ -50,10 +59,12 @@
 <body>
 
 <div id="top">
-  <label>Product (name, no size) <input type="text" id="q" placeholder="premium jumbo walnut" autocomplete="off"></label>
-  <label>Quantity <input type="text" id="qty" placeholder="10kg" autocomplete="off"></label>
-  <label>Rate <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
-  <label>Rate is <select id="unit"><option value="kg">per kg</option><option value="all">whole qty</option></select></label>
+  <div><div class="muted" style="font-size:11px;font-weight:bold;color:#444">Buying</div>
+    <div class="seg" id="mseg"><label id="mLoose" title="bought by weight, split into pack sizes"><input type="radio" name="mode" value="loose">LOOSE kg</label><label id="mPacked" title="ready packs: scan the barcode or type the name"><input type="radio" name="mode" value="packed">PACKED pcs</label></div></div>
+  <label><span id="qL">Product (name, no size)</span> <input type="text" id="q" placeholder="premium jumbo walnut" autocomplete="off"></label>
+  <label><span id="qtyL">Quantity</span> <input type="text" id="qty" placeholder="10kg" autocomplete="off"></label>
+  <label><span id="rateL">Rate</span> <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
+  <label id="unitL">Rate is <select id="unit"><option value="kg">per kg</option><option value="all">whole qty</option></select></label>
   <label>Tax code <select id="tax"></select></label>
   <div><div class="muted" style="font-size:11px;font-weight:bold;color:#444">Rate…</div>
     <div class="seg" id="seg"><label id="sIncl"><input type="radio" name="inc" value="incl">INCLUDES tax</label><label id="sExcl"><input type="radio" name="inc" value="excl">EXCLUDES tax</label></div></div>
@@ -61,11 +72,15 @@
 
 <div id="main">
   <div id="left">
-    <div class="bar" id="lefttop" style="margin:0 0 4px;position:sticky;top:-6px;background:#fff;z-index:3;padding:2px 0"><button id="eq" class="sec" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><span id="rem"></span></div>
+    <div class="bar" id="lefttop" style="margin:0 0 4px;position:sticky;top:-6px;background:#fff;z-index:3;padding:2px 0"><button id="eq" class="sec" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><label class="radio" id="autoL" style="display:none" title="split equally by itself when the quantity / ticks change; typing a kg yourself stops it for this product"><input type="checkbox" id="auto"> Auto split</label><span id="rem"></span></div>
     <div id="hint" class="muted">Loading products…</div>
     <div id="groups" style="margin:4px 0"></div>
+    <table id="pt" style="display:none">
+      <thead><tr><th>Barcode</th><th>Product</th><th class="n" title="change or fill in - saved in Product List when you Add to list">NPP ✎</th><th class="n" title="change or fill in - saved in Product List when you Add to list">MRP ✎</th><th></th></tr></thead>
+      <tbody id="pb"></tbody>
+    </table>
     <table id="vt" style="display:none">
-      <thead><tr><th title="tick = included in Split equal"></th><th>Size</th><th>Product</th><th class="n">NPP</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
+      <thead><tr><th title="tick = included in Split equal"></th><th>Size</th><th>Product</th><th class="n" title="change or fill in - saved in Product List when you Add to list">NPP ✎</th><th class="n" title="change or fill in - saved in Product List when you Add to list">MRP ✎</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
       <tbody id="vb"></tbody>
     </table>
   </div>
@@ -73,7 +88,8 @@
     <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
     <div id="errs" style="min-height:44px;max-height:70px;overflow:auto"></div>
     <button id="add" class="go" disabled>＋ Add to list &nbsp;<span style="font-weight:normal;font-size:12px">(Enter)</span></button>
-    <label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label>
+    <div class="bar" style="margin:0"><label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label>
+    <label class="radio" style="margin:0" title="the cost per pack (before tax) is saved as the product's NPP in Product List"><input type="checkbox" id="updNpp" checked> Update NPP from purchase</label></div>
   </div>
 </div>
 
@@ -81,12 +97,13 @@
   <div><b style="color:#1f3d66">List for the sheet</b> <span id="cnt" class="muted"></span></div>
   <div id="listscroll">
     <table id="lt" style="display:none">
-      <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Net Unit Cost (incl tax)</th><th>Tax</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th></th></tr></thead>
+      <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Net Unit Cost (incl tax)</th><th>Tax</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th>Expiry</th><th></th></tr></thead>
       <tbody id="lb"></tbody>
     </table>
     <div id="lempty" class="muted">Nothing yet. Fill the top row, give the kg per size, then “Add to list” (or press Enter).</div>
   </div>
   <div class="bar">
+    <label class="radio" title="the supplier bill total incl tax - only a check">Bill total <input type="text" id="bill" class="ed" style="width:95px" placeholder="incl tax"></label><span id="billD"></span>
     <button id="put" disabled>Put in sheet</button>
     <button id="dl" class="sec">⬇ Download both files</button>
     <span id="msg"></span>
@@ -164,7 +181,91 @@ function findCands() {
   groups.forEach(function (g) { if (g.base === selGroup) cands = g.items.slice(0, 40); });
 }
 
+// ---------- PACKED mode: scan a barcode or type a name, pick ONE product, type packs + rate per pack ----------
+var mode = 'loose', pres = [], psel = null;
+function findPacked() {
+  var t = $('q').value.trim(); pres = [];
+  if (!loaded || !t) { psel = null; return; }
+  var bk = /^\d+$/.test(t) ? t.replace(/^0+/, '') : null;
+  if (bk !== null) pres = P.filter(function (p) { return String(p.code).replace(/^0+/, '') === bk; });   // scanned / typed barcode
+  if (!pres.length) {
+    var toks = t.toUpperCase().split(/[^A-Z0-9.]+/).filter(Boolean);
+    pres = P.filter(function (p) {
+      return toks.every(function (k) { return p.words.some(function (w) { return w.indexOf(k) === 0; }) || String(p.code).indexOf(k) === 0; });
+    }).slice(0, 40);
+  }
+  if (pres.length === 1) psel = pres[0];
+  if (psel && pres.indexOf(psel) < 0) psel = null;
+}
+function renderPacked() {
+  findPacked();
+  var pb = $('pb'); pb.innerHTML = '';
+  var hint = $('hint');
+  if (!loaded) hint.textContent = 'Loading products…';
+  else if (!$('q').value.trim()) hint.textContent = 'Scan the barcode (or type the barcode / name). Then type the number of packs and the rate per pack.';
+  else if (!pres.length) hint.innerHTML = '<span class="err">No product with this barcode / name.</span>';
+  else if (!psel) hint.textContent = pres.length + ' products match - click the one you bought.';
+  else hint.textContent = '✔ ' + psel.name + ' - type packs and rate per pack.';
+  $('pt').style.display = pres.length ? '' : 'none';
+  pres.forEach(function (p) {
+    var tr = document.createElement('tr'); tr.setAttribute('data-pick', p.code);
+    if (p === psel) tr.className = 'psel';
+    tr.innerHTML = '<td style="white-space:nowrap">' + esc(p.code) + '</td><td>' + esc(p.name) + '</td>' + priceCell(p, 'npp') + priceCell(p, 'mrp') +
+      '<td>' + (p === psel ? '<span class="ok">✔</span>' : '<button class="sec mini" data-pick="' + esc(p.code) + '">pick</button>') + '</td>';
+    pb.appendChild(tr);
+  });
+  recalc();
+}
+function recalcPacked() {
+  var errs = [];
+  var qv = $('qty').value.replace(/,/g, '').trim(), packs = qv !== '' && isFinite(qv) ? Number(qv) : NaN;
+  if (!$('q').value.trim() || !pres.length) errs.push('Scan or type a product');
+  else if (!psel) errs.push('Click the product you bought');
+  if (isNaN(packs) || packs <= 0) errs.push('Packs missing');
+  else if (Math.round(packs) !== packs) errs.push('Packs: whole number');
+  var rate = numOf('rate'), inc = (document.querySelector('input[name=inc]:checked') || {}).value, taxCode = $('tax').value;
+  if (isNaN(rate) || rate <= 0) errs.push('Rate per pack missing');
+  if (!inc) errs.push('Choose: rate includes tax or excludes tax');
+  if (!taxCode) errs.push('Choose the Tax Rate Code');
+  var calc = $('calc'), ok = false, t = TAX[taxCode], ex = 0;
+  if (!isNaN(rate) && rate > 0 && inc && taxCode) {
+    ex = inc === 'incl' ? rate / (1 + t / 100) : rate;
+    var n = packs > 0 ? packs : 0;
+    calc.className = 'calc';
+    calc.innerHTML = '<table class="ct"><tr><th></th><th class="n">Before tax</th><th class="n">Tax ' + t + '%</th><th class="n">With tax</th></tr>' +
+      '<tr><td>Per pack</td><td class="n">' + f2(ex) + '</td><td class="n">' + f2(ex * t / 100) + '</td><td class="n"><b>' + f2(ex * (1 + t / 100)) + '</b></td></tr>' +
+      (n ? '<tr class="cq"><td>' + n + ' pack' + (n > 1 ? 's' : '') + '</td><td class="n">' + f2(ex * n) + '</td><td class="n">' + f2(ex * n * t / 100) + '</td><td class="n"><b>' + f2(ex * n * (1 + t / 100)) + '</b></td></tr>' : '') +
+      '</table><div class="muted" style="margin-top:3px">Tax code ' + esc(taxCode) + ' · "With tax" per pack = Net Unit Cost</div>';
+    ok = true;
+  } else {
+    calc.className = 'calc muted';
+    calc.textContent = 'Type the rate per pack, choose including / excluding tax and the tax code.';
+  }
+  showChips(errs, ok && psel && packs > 0 ? priceWarns([{ p: psel, ex: ex }]) : []);
+  $('add').disabled = errs.length > 0 || !ok;
+  return (errs.length || !ok) ? null : { p: psel, packs: packs, ex: ex, tax: taxCode, t: t };
+}
+function setMode(m) {
+  mode = m === 'packed' ? 'packed' : 'loose';
+  try { localStorage.setItem('lp_mode', mode); } catch (e) {}
+  var pk = mode === 'packed';
+  $('mLoose').className = pk ? '' : 'on'; $('mPacked').className = pk ? 'on' : '';
+  document.querySelector('input[name=mode][value=' + mode + ']').checked = true;
+  $('qL').textContent = pk ? 'Barcode or product name' : 'Product (name, no size)';
+  $('q').placeholder = pk ? 'scan / type barcode or name' : 'premium jumbo walnut';
+  $('qtyL').textContent = pk ? 'Packs' : 'Quantity';
+  $('qty').placeholder = pk ? '24' : '10kg';
+  $('rateL').textContent = pk ? 'Rate per pack' : 'Rate';
+  $('unitL').style.display = pk ? 'none' : '';
+  ['lefttop', 'groups', 'vt'].forEach(function (id) { $(id).style.display = pk ? 'none' : ''; });
+  if (!pk) $('pt').style.display = 'none';
+  psel = null; kgs = {}; $('q').value = ''; $('qty').value = '';
+  renderVariants(); $('q').focus();
+}
+
 function renderVariants() {
+  if (mode === 'packed') { renderPacked(); return; }
+  $('pt').style.display = 'none';
   findCands();
   var vb = $('vb'); vb.innerHTML = '';
   var hint = $('hint');
@@ -186,13 +287,16 @@ function renderVariants() {
       gb.appendChild(o);
     }
   }
+  if (autoOn()) computeEqual();
+  $('autoL').style.display = cands.length > 1 ? '' : 'none';
   $('vt').style.display = cands.length ? '' : 'none';
   $('eq').style.display = cands.length > 1 ? '' : 'none';
   cands.forEach(function (p) {
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td><input type="checkbox" data-use="' + esc(p.code) + '"' + (useSz[p.code] === false ? '' : ' checked') + '></td><td><b>' + esc(sizeLabel(p.g)) + '</b></td><td>' + esc(p.name) + '</td><td class="n">' + (p.npp === '' ? '–' : f2(p.npp)) +
-      '</td><td class="n"><input type="text" class="kg" data-c="' + esc(p.code) + '" value="' + esc(kgs[p.code] || '') + '" placeholder="kg"></td>' +
-      '<td class="n" data-pk="' + esc(p.code) + '"></td><td><button class="sec mini" data-fill="' + esc(p.code) + '" title="Put all the remaining kg here">rest ↵</button></td>';
+    tr.innerHTML = '<td><input type="checkbox" data-use="' + esc(p.code) + '"' + (useSz[p.code] === false ? '' : ' checked') + '></td><td style="white-space:nowrap"><b>' + esc(sizeLabel(p.g)) + '</b></td><td>' + esc(p.name) + '</td>' + priceCell(p, 'npp') + priceCell(p, 'mrp') +
+      '<td class="n"><input type="text" class="kg" data-c="' + esc(p.code) + '" value="' + esc(kgs[p.code] || '') + '" placeholder="kg"' +
+      (cands.length === 1 ? ' readonly title="only one size: the whole quantity goes here by itself" style="background:#eef6ee"' : '') + '></td>' +
+      '<td class="n" data-pk="' + esc(p.code) + '"></td><td>' + (cands.length === 1 ? '<span class="muted" style="font-size:11px">auto</span>' : '<button class="sec mini" data-fill="' + esc(p.code) + '" title="Put all the remaining kg here">rest ↵</button>') + '</td>';
     vb.appendChild(tr);
   });
   recalc();
@@ -200,6 +304,13 @@ function renderVariants() {
 
 // returns the plan (or errors) and refreshes the live numbers
 function recalc() {
+  if (mode === 'packed') return recalcPacked();
+  // no choice = no question: one size only → all the quantity goes to it
+  if (cands.length === 1) {
+    var one = cands[0], qg = qtyG(), v = qg ? String(Math.round(qg) / 1000) : '';
+    kgs[one.code] = v;
+    var inp = document.querySelector('input.kg[data-c="' + CSS.escape(one.code) + '"]'); if (inp && inp.value !== v) inp.value = v;
+  }
   var errs = [], rows = [], sumKg = 0;
   var qG = qtyG(), qKg = qG / 1000;
   cands.forEach(function (p) {
@@ -226,6 +337,7 @@ function recalc() {
   else if (left === 0) rem.innerHTML = '<span class="ok">✔ ' + qKg + ' kg fully split.</span>';
   else if (left > 0) rem.innerHTML = '<span class="err">' + sumKg + ' kg of ' + qKg + ' kg split - ' + left + ' kg left.</span>';
   else rem.innerHTML = '<span class="err">' + sumKg + ' kg is MORE than ' + qKg + ' kg (by ' + (-left) + ' kg).</span>';
+  if ($('auto').checked && manualKg && cands.length > 1) rem.innerHTML += ' <span class="muted" title="you typed a kg yourself; click Split equal to split again">· auto split paused</span>';
 
   if (!searchTokens($('q').value).length || !groups.length) errs.unshift('Choose a product');
   else if (!cands.length) errs.unshift('Click the product you bought');
@@ -244,28 +356,135 @@ function recalc() {
     math = rateMath(rate, $('unit').value === 'kg', inc === 'incl', t, qKg);
     var tot = math.exKg * qKg;
     calc.className = 'calc';
-    calc.innerHTML = 'Tax ' + esc(taxCode) + ' = <b>' + t + '%</b> &nbsp;|&nbsp; per kg: <b>' + f2(math.exKg) + '</b> before tax, <b>' + f2(math.inclKg) + '</b> with tax' +
-      '<br>For ' + qKg + ' kg: <b>' + f2(tot) + '</b> before tax + tax <b>' + f2(tot * t / 100) + '</b> = <b>' + f2(tot * (1 + t / 100)) + '</b> total' +
-      (rows.length ? '<br>' + rows.map(function (r) { return sizeLabel(r.p.g) + ' pack: <b>' + f2(round4(math.inclKg * r.p.g / 1000)) + '</b> incl tax'; }).join(' &nbsp;·&nbsp; ') : '');
+    // calculator as a small table: per kg / whole quantity, then one row per pack size
+    var ct = '<table class="ct"><tr><th></th><th class="n">Before tax</th><th class="n">Tax ' + t + '%</th><th class="n">With tax</th></tr>' +
+      '<tr><td>Per kg</td><td class="n">' + f2(math.exKg) + '</td><td class="n">' + f2(math.inclKg - math.exKg) + '</td><td class="n"><b>' + f2(math.inclKg) + '</b></td></tr>' +
+      '<tr class="cq"><td>' + qKg + ' kg</td><td class="n">' + f2(tot) + '</td><td class="n">' + f2(tot * t / 100) + '</td><td class="n"><b>' + f2(tot * (1 + t / 100)) + '</b></td></tr>';
+    rows.forEach(function (r) {
+      var ex1 = math.exKg * r.p.g / 1000;
+      ct += '<tr><td>' + sizeLabel(r.p.g) + ' pack <span class="muted">× ' + r.packs + '</span></td><td class="n">' + f2(ex1) + '</td><td class="n">' + f2(ex1 * t / 100) +
+        '</td><td class="n"><b>' + f2(round4(math.inclKg * r.p.g / 1000)) + '</b></td></tr>';
+    });
+    calc.className = 'calc';
+    calc.innerHTML = ct + '</table><div class="muted" style="margin-top:3px">Tax code ' + esc(taxCode) + ' · pack prices = Net Unit Cost per pack</div>';
   } else {
     calc.className = 'calc muted';
     calc.textContent = 'Type the rate, choose including / excluding tax and the tax code.';
   }
-  $('errs').innerHTML = errs.length ? errs.map(function (m) { return '<span class="chip">' + esc(m) + '</span>'; }).join('') : '<span class="chip good">✔ Ready - press Enter or click Add to list</span>';
+  showChips(errs, math ? priceWarns(rows.map(function (r) { return { p: r.p, ex: math.exKg * r.p.g / 1000 }; })) : []);
   $('add').disabled = errs.length > 0 || !math;
   return (errs.length || !math) ? null : { rows: rows, math: math, tax: taxCode, t: TAX[taxCode] };
+}
+
+// NPP / MRP boxes: typed values are kept in prices[code] until "Add to list" saves them in Product List.
+var prices = {};
+function priceCell(p, f) {
+  var typed = prices[p.code] && prices[p.code][f] !== undefined ? prices[p.code][f] : null;
+  var v = typed !== null ? typed : (p[f] === '' ? '' : String(p[f]));
+  var chg = typed !== null && pnum(typed) !== (p[f] === '' ? null : Number(p[f]));
+  return '<td class="n"><input type="text" class="pr' + (chg ? ' chg' : '') + '" data-pr="' + f + '" data-pc="' + esc(p.code) + '" value="' + esc(v) + '" placeholder="' + f.toUpperCase() + '"></td>';
+}
+function pnum(v) { v = String(v).replace(/,/g, '').trim(); return v !== '' && isFinite(v) && Number(v) >= 0 ? Number(v) : null; }
+// changed NPP / MRP of the products on screen → [{code, npp?, mrp?}] (blank or same value = no change)
+function priceChanges() {
+  var out = [];
+  (mode === 'packed' ? pres : cands).forEach(function (p) {
+    var t = prices[p.code]; if (!t) return;
+    var c = { code: p.code }, any = false;
+    ['npp', 'mrp'].forEach(function (f) {
+      if (t[f] === undefined) return;
+      var n = pnum(t[f]); if (n === null) return;
+      if (p[f] === '' || Number(p[f]) !== n) { c[f] = n; any = true; }
+    });
+    if (any) out.push(c);
+  });
+  return out;
+}
+function savePrices(ch) {
+  if (!ch.length) return;
+  ch.forEach(function (c) { P.forEach(function (p) { if (p.code === c.code) { if (c.npp !== undefined) p.npp = c.npp; if (c.mrp !== undefined) p.mrp = c.mrp; } }); delete prices[c.code]; });
+  google.script.run
+    .withSuccessHandler(function (n) { setMsg('<span class="ok">✔ NPP / MRP saved in Product List for ' + n + ' product(s).</span>'); })
+    .withFailureHandler(function (e) { setMsg('<span class="err">NPP / MRP not saved: ' + esc(e.message) + '</span>'); })
+    .lpSavePrices(ch);
+}
+
+// Red chips = must fix (Add stays off); amber chips = only a check, Add still works.
+function showChips(errs, warns) {
+  var h = errs.map(function (m) { return '<span class="chip">' + esc(m) + '</span>'; }).join('');
+  if (!errs.length) h = '<span class="chip good">✔ Ready - press Enter or click Add to list</span>';
+  h += (warns || []).map(function (m) { return '<span class="chip warn">⚠ ' + esc(m) + '</span>'; }).join('');
+  $('errs').innerHTML = h;
+}
+// (3) wrong-rate check: cost per pack (before tax) far from the product's NPP → warning only
+var RATE_WARN_ = 0.30;   // 30 %
+function priceWarns(list) {
+  var out = [];
+  list.forEach(function (x) {
+    var n = Number(x.p.npp); if (!(n > 0) || !(x.ex > 0)) return;
+    var d = (x.ex - n) / n;
+    if (Math.abs(d) > RATE_WARN_) out.push(x.p.name + ': cost ' + f2(x.ex) + ' vs NPP ' + f2(n) + ' (' + (d > 0 ? '+' : '') + Math.round(d * 100) + '%) - check the rate');
+  });
+  return out;
+}
+// (1) expiry = today + shelf life (Product List G, days, same as the stickers' EXP), as MM/dd/yyyy like the POS sample
+function expOf(p) {
+  var sh = Number(p.shelf); if (!(sh > 0)) return '';
+  var d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + Math.round(sh));
+  var two = function (n) { return (n < 10 ? '0' : '') + n; };
+  return two(d.getMonth() + 1) + '/' + two(d.getDate()) + '/' + d.getFullYear();
+}
+// (6) the purchase cost per pack (before tax) becomes the product's NPP, unless you typed an NPP yourself
+function nppFromPurchase(ch, lines) {
+  if (!$('updNpp').checked) return ch;
+  lines.forEach(function (l) {
+    var c = ch.filter(function (x) { return x.code === l.code; })[0];
+    if (c && c.npp !== undefined) return;
+    var v = Math.round(l.cost * 100) / 100, p = P.filter(function (x) { return x.code === l.code; })[0];
+    if (!p || Number(p.npp) === v) return;
+    if (c) c.npp = v; else ch.push({ code: l.code, npp: v });
+  });
+  return ch;
+}
+// (5) same product, same cost and tax already in the list → add the packs to that line (also in the sheet)
+function mergeOrAdd(it) {
+  var same = items.filter(function (x) { return x.dd === it.dd && x.tax === it.tax && Math.abs(x.cost - it.cost) < 1e-6 && !x.q; })[0];
+  if (!same) {
+    if (items.some(function (x) { return x.dd === it.dd; })) setMsg('<span class="err">⚠ ' + esc(it.name) + ' is already in the list at another cost / tax - added as a separate line.</span>');
+    items.push(it); return it;
+  }
+  var total = same.packs + it.packs;
+  if (!same.done) { same.packs = total; setMsg('<span class="ok">+ ' + it.packs + ' packs added to the line already in the list (' + esc(it.name) + ').</span>'); return null; }
+  same.q = true;
+  google.script.run
+    .withSuccessHandler(function () { same.q = false; same.packs = total; renderList(); setMsg('<span class="ok">+ ' + it.packs + ' packs added to sheet row ' + same.row + ' (' + esc(it.name) + ').</span>'); })
+    .withFailureHandler(function (e) { same.q = false; items.push(it); renderList(); if ($('fast').checked) writeItems([it]); setMsg('<span class="err">Could not add to the existing line (' + esc(e.message) + ') - added as a new line.</span>'); })
+    .lpUpdate(same.row, same.dd, { packs: total, cost: same.cost, tax: same.tax });
+  return null;
 }
 
 function addToList() {
   var pl = recalc();
   if (!pl) return;
+  if (mode === 'packed') {
+    var one = { dd: pl.p.dd, code: pl.p.code, name: pl.p.name, packs: pl.packs, cost: round4(pl.ex), tax: pl.tax, t: pl.t, exp: expOf(pl.p), done: false, q: false };
+    savePrices(nppFromPurchase(priceChanges(), [one]));
+    one = mergeOrAdd(one);
+    psel = null; $('q').value = ''; $('qty').value = ''; $('rate').value = '';
+    renderVariants(); renderList();
+    if (one && $('fast').checked) writeItems([one]);
+    $('q').focus();   // ready for the next scan
+    return;
+  }
   var fresh = [];
   pl.rows.forEach(function (r) {
     var cost = round4(pl.math.exKg * r.p.g / 1000);
-    var it = { dd: r.p.dd, name: r.p.name, packs: r.packs, cost: cost, tax: pl.tax, t: pl.t, done: false, q: false };
-    items.push(it); fresh.push(it);
+    var it = { dd: r.p.dd, code: r.p.code, name: r.p.name, packs: r.packs, cost: cost, tax: pl.tax, t: pl.t, exp: expOf(r.p), done: false, q: false };
+    fresh.push(it);
   });
-  kgs = {}; $('q').value = ''; $('qty').value = ''; $('rate').value = '';   // keep rate unit, incl/excl, tax for the next product
+  savePrices(nppFromPurchase(priceChanges(), fresh));
+  fresh = fresh.map(mergeOrAdd).filter(Boolean);
+  kgs = {}; manualKg = false; $('q').value = ''; $('qty').value = ''; $('rate').value = '';   // keep rate unit, incl/excl, tax for the next product
   renderVariants(); renderList();
   if ($('fast').checked) writeItems(fresh);
   $('q').focus();
@@ -275,6 +494,15 @@ var editIdx = -1;
 // Net Unit Cost per pack INCLUDING tax, exactly as the sheet stores it (server pcInclCost_: 4 decimals)
 function inclOf(it) { return round4(it.cost * (1 + it.t / 100)); }
 
+var listInc = 0;
+// (2) bill check: compares the list total (incl tax) with the bill total you type - never blocks anything
+function billCheck() {
+  var b = numOf('bill'), box = $('billD');
+  if (isNaN(b) || b <= 0) { box.innerHTML = ''; return; }
+  var d = Math.round((listInc - b) * 100) / 100;
+  box.innerHTML = Math.abs(d) < 1 ? '<span class="ok">✔ matches the bill</span>' :
+    '<span class="chip warn">⚠ list ' + f2(listInc) + ' is ' + f2(Math.abs(d)) + (d > 0 ? ' MORE' : ' LESS') + ' than the bill</span>';
+}
 function renderList() {
   var lb = $('lb'); lb.innerHTML = '';
   var ex = 0, inc = 0;
@@ -286,21 +514,22 @@ function renderList() {
       tr.className = 'editing';
       var opts = Object.keys(TAX).map(function (k) { return '<option' + (k === it.tax ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
       tr.innerHTML = '<td>' + esc(it.dd) + '</td><td class="n"><input type="text" class="ed" id="ePk" value="' + it.packs + '"></td><td class="n"><input type="text" class="ed" id="eCost" value="' + ci + '" title="Net Unit Cost INCLUDING tax"></td>' +
-        '<td><select id="eTax">' + opts + '</select></td><td colspan="2" class="muted" id="eErr"></td>' +
+        '<td><select id="eTax">' + opts + '</select></td><td colspan="3" class="muted" id="eErr"></td>' +
         '<td style="white-space:nowrap"><button class="mini" data-save="' + i + '">✔ Save</button> <button class="sec mini" data-cancel="1">✕</button></td>';
     } else {
       var act = it.q ? '…' : '<button class="sec mini" data-edit="' + i + '" title="Change packs / cost / tax">✎</button> ' +
         (it.sure ? '<button class="mini" data-del="' + i + '">sure?</button>' : '<button class="sec mini" data-del="' + i + '" title="Remove' + (it.done ? ' (empties its row in the sheet)' : '') + '">✕</button>');
       tr.innerHTML = '<td>' + (it.done ? '<span class="ok" title="in the sheet">✔</span> ' : '') + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(ci) + '</td><td>' + esc(it.tax) +
-        '</td><td class="n">' + f2(g) + '</td><td class="n">' + f2(e) + '</td><td style="white-space:nowrap">' + act + '</td>';
+        '</td><td class="n">' + f2(g) + '</td><td class="n">' + f2(e) + '</td><td class="muted">' + esc(it.exp || '') + '</td><td style="white-space:nowrap">' + act + '</td>';
     }
     lb.appendChild(tr);
   });
   if (items.length) {
     var tr = document.createElement('tr'); tr.className = 'tot';
-    tr.innerHTML = '<td>Total (✔ = in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(inc) + '</td><td class="n">' + f2(ex) + '</td><td></td>';
+    tr.innerHTML = '<td>Total (✔ = in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(inc) + '</td><td class="n">' + f2(ex) + '</td><td></td><td></td>';
     lb.appendChild(tr);
   }
+  listInc = inc; billCheck();
   $('lt').style.display = items.length ? '' : 'none';
   $('lempty').style.display = items.length ? 'none' : '';
   $('cnt').textContent = items.length ? '(' + items.length + ' line' + (items.length > 1 ? 's' : '') + ')' : '';
@@ -363,7 +592,7 @@ function pump() {
       writing = false; renderList();
       setMsg('<span class="err">Not written: ' + esc(e.message) + ' (the lines are still in the list)</span>');
     })
-    .lpWrite(arr.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax }; }));
+    .lpWrite(arr.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax, exp: it.exp || '' }; }));
 }
 function putInSheet() { writeItems(items); }
 
@@ -399,9 +628,9 @@ function download() {
 var qTimer = null;
 $('q').addEventListener('input', function () {
   // a size typed after the name ("walnut 40kg") becomes the quantity when the quantity box is empty
-  clearTimeout(qTimer); showAll = false; qTimer = setTimeout(renderVariants, 120);
+  clearTimeout(qTimer); showAll = false; manualKg = false; qTimer = setTimeout(renderVariants, 120);
 });
-$('qty').addEventListener('input', recalc);
+$('qty').addEventListener('input', function () { if (autoOn()) renderVariants(); else recalc(); });
 $('rate').addEventListener('input', recalc);
 $('unit').addEventListener('change', recalc);
 $('tax').addEventListener('change', recalc);
@@ -409,9 +638,36 @@ Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r
 $('groups').addEventListener('click', function (e) {
   if (e.target.getAttribute && e.target.getAttribute('data-other')) { showAll = true; renderVariants(); return; }
   var b = e.target.closest ? e.target.closest('[data-g]') : null; if (!b) return;
-  selGroup = b.getAttribute('data-g'); kgs = {}; showAll = false; renderVariants(); $('qty').focus();
+  selGroup = b.getAttribute('data-g'); kgs = {}; showAll = false; manualKg = false; renderVariants(); $('qty').focus();
 });
-$('vb').addEventListener('input', function (e) { var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; recalc(); } });
+function priceInput(e) {
+  var f = e.target.getAttribute('data-pr'); if (!f) return false;
+  var c = e.target.getAttribute('data-pc'); prices[c] = prices[c] || {}; prices[c][f] = e.target.value;
+  var p = P.filter(function (x) { return x.code === c; })[0];
+  e.target.className = 'pr' + (p && pnum(e.target.value) !== (p[f] === '' ? null : Number(p[f])) ? ' chg' : '');
+  if (pnum(e.target.value) === null && e.target.value.trim() !== '') e.target.className = 'pr chg';
+  return true;
+}
+$('pb').addEventListener('input', priceInput);
+$('pb').addEventListener('click', function (e) {
+  if (e.target.getAttribute('data-pr')) return;   // typing in NPP / MRP is not a pick
+  var tr = e.target.closest ? e.target.closest('[data-pick]') : null; if (!tr) return;
+  var c = tr.getAttribute('data-pick');
+  psel = pres.filter(function (p) { return p.code === c; })[0] || null;
+  renderPacked(); $('qty').focus();
+});
+$('pb').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && e.target.getAttribute('data-pr')) { e.preventDefault(); e.stopPropagation(); $('qty').focus(); }
+});
+$('vb').addEventListener('input', function (e) {
+  var f = e.target.getAttribute('data-pr');
+  if (f) {
+    var c = e.target.getAttribute('data-pc'); prices[c] = prices[c] || {}; prices[c][f] = e.target.value;
+    var p = P.filter(function (x) { return x.code === c; })[0];
+    e.target.className = 'pr' + (p && pnum(e.target.value) !== (p[f] === '' ? null : Number(p[f])) ? ' chg' : '');
+    if (pnum(e.target.value) === null && e.target.value.trim() !== '') e.target.className = 'pr chg';
+    return;
+  } var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; manualKg = true; recalc(); } });
 $('vb').addEventListener('click', function (e) {
   var c = e.target.getAttribute('data-fill'); if (!c) return;
   var qKg = qtyG() / 1000, other = 0;
@@ -432,32 +688,108 @@ $('lb').addEventListener('keydown', function (e) {
   else if (e.key === 'Escape') { editIdx = -1; renderList(); }
 });
 try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } catch (e) {}
+try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; if (localStorage.getItem('lp_npp') === '0') $('updNpp').checked = false; } catch (e) {}
+$('updNpp').addEventListener('change', function () { try { localStorage.setItem('lp_npp', $('updNpp').checked ? '1' : '0'); } catch (e) {} });
+$('bill').addEventListener('input', billCheck);
+$('auto').addEventListener('change', function () { try { localStorage.setItem('lp_auto', $('auto').checked ? '1' : '0'); } catch (e) {} if ($('auto').checked) { manualKg = false; renderVariants(); } });
 $('fast').addEventListener('change', function () { try { localStorage.setItem('lp_fast', $('fast').checked ? '1' : '0'); } catch (e) {} });
 $('add').addEventListener('click', addToList);
 $('put').addEventListener('click', putInSheet);
 $('dl').addEventListener('click', download);
-// Equal WEIGHT for every ticked size, whole packs only; the few kg that do not fit are given out as extra packs
-// (smallest sizes first). Anything that still does not fit is shown as "kg left" to fix by hand.
-function splitEqual() {
-  var qG = qtyG(); if (!qG) { $('rem').innerHTML = '<span class="err">Type the quantity first (e.g. 10kg).</span>'; $('qty').focus(); return; }
+// Packs per size that add up EXACTLY to qG grams, with each size's weight as close as possible to an equal share
+// (least squares). Works in units of the sizes' common divisor (e.g. 100 g for 200 g / 500 g / 1 kg).
+// Returns [packs per size] or null when no exact split exists.
+function exactSplit(qG, sizes) {
+  var gcd = function (a, b) { return b ? gcd(b, a % b) : a; };
+  var g = sizes.map(function (x) { return Math.round(x); }), q = Math.round(qG);
+  var u = g.reduce(gcd);
+  if (!u || q % u) return null;
+  var T = q / u, s = g.map(function (x) { return x / u; }), n = s.length, share = q / n;
+  if (T * n > 4e6) return null;   // too big to search: fall back
+  var INF = 1e300, prev = new Float64Array(T + 1).fill(INF), pick = [];
+  prev[0] = 0;
+  for (var i = 0; i < n; i++) {
+    var cur = new Float64Array(T + 1).fill(INF), ch = new Int32Array(T + 1).fill(-1);
+    for (var r = 0; r <= T; r++) {
+      for (var c = 0; c * s[i] <= r; c++) {
+        var b = prev[r - c * s[i]]; if (b === INF) continue;
+        var d = c * g[i] - share, v = b + d * d;
+        if (v < cur[r]) { cur[r] = v; ch[r] = c; }
+      }
+    }
+    pick.push(ch); prev = cur;
+  }
+  if (prev[T] === INF) return null;
+  var out = new Array(n), rr = T;
+  for (var k = n - 1; k >= 0; k--) { out[k] = pick[k][rr]; rr -= out[k] * s[k]; }
+  return out;
+}
+
+// Equal WEIGHT for every ticked size, whole packs only, adding up exactly when that is possible (exactSplit);
+// otherwise the old way and the small rest is shown as "kg left" to fix by hand.
+// Sets kgs for an equal split of the ticked sizes (no redraw). Returns '' or a message why it could not.
+function computeEqual() {
+  var qG = qtyG(); if (!qG) return 'Type the quantity first (e.g. 10kg).';
   var sel = cands.filter(function (p) { return useSz[p.code] !== false; });
-  if (!sel.length) { $('rem').innerHTML = '<span class="err">Tick at least one size.</span>'; return; }
-  var share = qG / sel.length, pk = {}, used = 0;
-  sel.forEach(function (p) { pk[p.code] = Math.floor(share / p.g + 1e-9); used += pk[p.code] * p.g; });
-  var left = qG - used, moved = true;
-  while (moved) { moved = false; sel.forEach(function (p) { if (left + 1e-9 >= p.g) { pk[p.code]++; left -= p.g; moved = true; } }); }
+  if (!sel.length) return 'Tick at least one size.';
+  var share = qG / sel.length;
+  var pk = exactSplit(qG, sel.map(function (p) { return p.g; }));   // exact, as near to equal as possible
+  if (pk) { var m = {}; sel.forEach(function (p, i) { m[p.code] = pk[i]; }); pk = m; }
+  else {   // no exact way (e.g. 15.1 kg in 200 g / 500 g packs): old way, the small rest stays as "kg left"
+    pk = {}; var used = 0;
+    sel.forEach(function (p) { pk[p.code] = Math.floor(share / p.g + 1e-9); used += pk[p.code] * p.g; });
+    var left = qG - used, moved = true;
+    while (moved) { moved = false; sel.forEach(function (p) { if (left + 1e-9 >= p.g) { pk[p.code]++; left -= p.g; moved = true; } }); }
+  }
   kgs = {};
   sel.forEach(function (p) { if (pk[p.code] > 0) kgs[p.code] = String(Math.round(pk[p.code] * p.g) / 1000); });
+  return '';
+}
+function splitEqual() {
+  manualKg = false;   // the button always re-splits (and lets Auto split work again for this product)
+  var why = computeEqual();
+  if (why) { $('rem').innerHTML = '<span class="err">' + esc(why) + '</span>'; if (!qtyG()) $('qty').focus(); return; }
   renderVariants();
   var rate = $('rate'); if (qtyG() && !$('add').disabled) $('add').focus(); else rate.focus();
 }
+// AUTO SPLIT (on / off, remembered): split equally by itself while you have not typed a kg yourself for this product
+var manualKg = false;
+function autoOn() { return $('auto').checked && mode === 'loose' && !manualKg && cands.length > 1 && qtyG() > 0; }
 $('eq').addEventListener('click', splitEqual);
-$('vb').addEventListener('change', function (e) { var c = e.target.getAttribute('data-use'); if (c) useSz[c] = e.target.checked; });
-function kgInputs() { return Array.prototype.slice.call(document.querySelectorAll('input.kg')); }
-$('q').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); clearTimeout(qTimer); renderVariants(); $('qty').focus(); $('qty').select(); } });
-$('qty').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); var k = kgInputs(); (k[0] || $('rate')).focus(); } });
+$('vb').addEventListener('change', function (e) {
+  var c = e.target.getAttribute('data-use'); if (c) { useSz[c] = e.target.checked; if (autoOn()) renderVariants(); return; }
+  if (e.target.getAttribute('data-c')) autoRest();
+});
+// After a kg box is left: if exactly one ticked size has no kg and some kg are still left, they can only go there.
+function autoRest() {
+  if (mode !== 'loose' || cands.length < 2) return;
+  var qKg = qtyG() / 1000; if (!qKg) return;
+  var used = 0, empty = [];
+  cands.forEach(function (p) {
+    var g = parseSum(kgs[p.code] || '', true);
+    if (g) used += g / 1000; else if (useSz[p.code] !== false) empty.push(p);
+  });
+  var left = Math.round((qKg - used) * 1e6) / 1e6;
+  if (empty.length !== 1 || left <= 0) return;
+  kgs[empty[0].code] = String(left);
+  var inp = document.querySelector('input.kg[data-c="' + CSS.escape(empty[0].code) + '"]'); if (inp) inp.value = kgs[empty[0].code];
+  recalc();
+}
+function kgInputs() { return Array.prototype.slice.call(document.querySelectorAll('input.kg:not([readonly])')); }
+$('q').addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  e.preventDefault(); e.stopPropagation(); clearTimeout(qTimer); renderVariants();
+  if (mode === 'packed' && !psel) return;   // several matches: click one
+  $('qty').focus(); $('qty').select();
+});
+$('qty').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); var k = mode === 'packed' ? [] : kgInputs(); (k[0] || $('rate')).focus(); } });
 // Enter in a kg box: empty = put all remaining kg there; then jump to the next box, after the last one to Rate
 $('vb').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter' && e.target.getAttribute('data-pr')) {
+    e.preventDefault(); e.stopPropagation();
+    var all = Array.prototype.slice.call(document.querySelectorAll('input.pr')), at = all.indexOf(e.target);
+    (all[at + 1] || $('rate')).focus(); return;
+  }
   if (e.key !== 'Enter' || !e.target.getAttribute('data-c')) return;
   e.preventDefault(); e.stopPropagation();
   var c = e.target.getAttribute('data-c');
@@ -467,6 +799,7 @@ $('vb').addEventListener('keydown', function (e) {
     var left = Math.round((qKg - other) * 1e6) / 1e6;
     if (left > 0) { kgs[c] = String(left); e.target.value = kgs[c]; recalc(); }
   }
+  autoRest();
   var used = 0; cands.forEach(function (p) { used += (parseSum(kgs[p.code] || '', true) || 0) / 1000; });
   var k = kgInputs(), at = k.indexOf(e.target);
   // everything split -> straight to Rate, else the next size
@@ -474,6 +807,7 @@ $('vb').addEventListener('keydown', function (e) {
 });
 document.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !$('add').disabled && (e.target.tagName === 'INPUT' || e.target === document.body) && editIdx < 0) { e.preventDefault(); addToList(); } });
 // segmented buttons look + remember last choices
+Array.prototype.forEach.call(document.getElementsByName('mode'), function (r) { r.addEventListener('change', function () { setMode(r.value); }); });
 function paintSeg() { var v = (document.querySelector('input[name=inc]:checked') || {}).value; $('sIncl').className = v === 'incl' ? 'on' : ''; $('sExcl').className = v === 'excl' ? 'on' : ''; }
 Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r.addEventListener('change', function () { paintSeg(); try { localStorage.setItem('lp_inc', r.value); } catch (e) {} }); });
 $('tax').addEventListener('change', function () { try { localStorage.setItem('lp_tax', $('tax').value); } catch (e) {} });
@@ -481,10 +815,10 @@ $('unit').addEventListener('change', function () { try { localStorage.setItem('l
 
 
 // a size typed in the product box and no quantity yet: show it as the quantity hint
-$('q').addEventListener('blur', function () { if (!$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; recalc(); } } });
+$('q').addEventListener('blur', function () { if (mode === 'loose' && !$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; if (autoOn()) renderVariants(); else recalc(); } } });
 
 function init(d) {
-  P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
+  P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], mrp: r[4] === undefined ? '' : r[4], shelf: r[5] === undefined ? '' : r[5], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
   d.taxes.forEach(function (t) { TAX[t[0]] = t[1]; });
   var sel = $('tax'); sel.innerHTML = '<option value="">– choose –</option>';
   d.taxes.forEach(function (t) { var o = document.createElement('option'); o.value = t[0]; o.textContent = t[0] + '  (' + t[1] + '%)'; sel.appendChild(o); });
@@ -495,7 +829,9 @@ function init(d) {
     var su = localStorage.getItem('lp_unit'); if (su) $('unit').value = su;
   } catch (e) {}
   paintSeg();
-  loaded = true; renderVariants();
+  loaded = true;
+  var sm = 'loose'; try { sm = localStorage.getItem('lp_mode') || 'loose'; } catch (e) {}
+  setMode(sm);
 }
 if (window.google && google.script) {
   google.script.run.withSuccessHandler(init).withFailureHandler(function (e) { $('hint').innerHTML = '<span class="err">' + esc(e.message) + '</span>'; }).lpGetData();
