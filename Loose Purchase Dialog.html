@@ -621,16 +621,50 @@ $('fast').addEventListener('change', function () { try { localStorage.setItem('l
 $('add').addEventListener('click', addToList);
 $('put').addEventListener('click', putInSheet);
 $('dl').addEventListener('click', download);
-// Equal WEIGHT for every ticked size, whole packs only; the few kg that do not fit are given out as extra packs
-// (smallest sizes first). Anything that still does not fit is shown as "kg left" to fix by hand.
+// Packs per size that add up EXACTLY to qG grams, with each size's weight as close as possible to an equal share
+// (least squares). Works in units of the sizes' common divisor (e.g. 100 g for 200 g / 500 g / 1 kg).
+// Returns [packs per size] or null when no exact split exists.
+function exactSplit(qG, sizes) {
+  var gcd = function (a, b) { return b ? gcd(b, a % b) : a; };
+  var g = sizes.map(function (x) { return Math.round(x); }), q = Math.round(qG);
+  var u = g.reduce(gcd);
+  if (!u || q % u) return null;
+  var T = q / u, s = g.map(function (x) { return x / u; }), n = s.length, share = q / n;
+  if (T * n > 4e6) return null;   // too big to search: fall back
+  var INF = 1e300, prev = new Float64Array(T + 1).fill(INF), pick = [];
+  prev[0] = 0;
+  for (var i = 0; i < n; i++) {
+    var cur = new Float64Array(T + 1).fill(INF), ch = new Int32Array(T + 1).fill(-1);
+    for (var r = 0; r <= T; r++) {
+      for (var c = 0; c * s[i] <= r; c++) {
+        var b = prev[r - c * s[i]]; if (b === INF) continue;
+        var d = c * g[i] - share, v = b + d * d;
+        if (v < cur[r]) { cur[r] = v; ch[r] = c; }
+      }
+    }
+    pick.push(ch); prev = cur;
+  }
+  if (prev[T] === INF) return null;
+  var out = new Array(n), rr = T;
+  for (var k = n - 1; k >= 0; k--) { out[k] = pick[k][rr]; rr -= out[k] * s[k]; }
+  return out;
+}
+
+// Equal WEIGHT for every ticked size, whole packs only, adding up exactly when that is possible (exactSplit);
+// otherwise the old way and the small rest is shown as "kg left" to fix by hand.
 function splitEqual() {
   var qG = qtyG(); if (!qG) { $('rem').innerHTML = '<span class="err">Type the quantity first (e.g. 10kg).</span>'; $('qty').focus(); return; }
   var sel = cands.filter(function (p) { return useSz[p.code] !== false; });
   if (!sel.length) { $('rem').innerHTML = '<span class="err">Tick at least one size.</span>'; return; }
-  var share = qG / sel.length, pk = {}, used = 0;
-  sel.forEach(function (p) { pk[p.code] = Math.floor(share / p.g + 1e-9); used += pk[p.code] * p.g; });
-  var left = qG - used, moved = true;
-  while (moved) { moved = false; sel.forEach(function (p) { if (left + 1e-9 >= p.g) { pk[p.code]++; left -= p.g; moved = true; } }); }
+  var share = qG / sel.length;
+  var pk = exactSplit(qG, sel.map(function (p) { return p.g; }));   // exact, as near to equal as possible
+  if (pk) { var m = {}; sel.forEach(function (p, i) { m[p.code] = pk[i]; }); pk = m; }
+  else {   // no exact way (e.g. 15.1 kg in 200 g / 500 g packs): old way, the small rest stays as "kg left"
+    pk = {}; var used = 0;
+    sel.forEach(function (p) { pk[p.code] = Math.floor(share / p.g + 1e-9); used += pk[p.code] * p.g; });
+    var left = qG - used, moved = true;
+    while (moved) { moved = false; sel.forEach(function (p) { if (left + 1e-9 >= p.g) { pk[p.code]++; left -= p.g; moved = true; } }); }
+  }
   kgs = {};
   sel.forEach(function (p) { if (pk[p.code] > 0) kgs[p.code] = String(Math.round(pk[p.code] * p.g) / 1000); });
   renderVariants();
