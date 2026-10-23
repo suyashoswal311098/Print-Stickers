@@ -11,7 +11,7 @@
   input[type=text], select { font-size: 14px; padding: 5px 7px; border: 1px solid #aaa; border-radius: 4px; }
   input:focus, select:focus { outline: 2px solid #4a86c8; }
   #top { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; background: #f1f5fb; border: 1px solid #c8d3e3; border-radius: 8px; padding: 8px; }
-  #q { width: 190px; } #qty { width: 80px; } #rate { width: 80px; } #unit { width: 100px; } #tax { width: 112px; }
+  #q { width: 165px; } #qty { width: 66px; } #rate { width: 70px; } #unit { width: 92px; } #tax { width: 104px; }
   .seg { display: flex; } .seg label { flex-direction: row; font-size: 13px; font-weight: bold; margin: 0; padding: 6px 8px; border: 1px solid #1f3d66; color: #1f3d66; cursor: pointer; background: #fff; }
   .seg label:first-child { border-radius: 4px 0 0 4px; } .seg label:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
   .seg input { position: absolute; opacity: 0; width: 0; height: 0; } .seg label { position: relative; } .seg label.on { background: #1f3d66; color: #fff; }
@@ -49,6 +49,7 @@
   .ct td { border-bottom: 1px solid #f0e2b0; padding: 3px 6px; }
   .ct tr.cq td { border-bottom: 2px solid #e0c060; font-weight: bold; }
   .chip { display: inline-block; background: #fdecea; color: #b3261e; border: 1px solid #f3b8b3; border-radius: 12px; padding: 1px 9px; margin: 0 4px 4px 0; font-size: 12px; font-weight: normal; }
+  .chip.warn { background: #fff4d6; color: #8a5a00; border-color: #f0cf7a; }
   .chip.good { background: #e6f4ea; color: #1e7e34; border-color: #a8d5b5; }
   button.go { background: #1e7e34; border-color: #145a25; font-size: 17px; font-weight: bold; padding: 12px 14px; width: 100%; }
   button.go:disabled { background: #9aa5b1; border-color: #9aa5b1; }
@@ -87,7 +88,8 @@
     <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
     <div id="errs" style="min-height:44px;max-height:70px;overflow:auto"></div>
     <button id="add" class="go" disabled>＋ Add to list &nbsp;<span style="font-weight:normal;font-size:12px">(Enter)</span></button>
-    <label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label>
+    <div class="bar" style="margin:0"><label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label>
+    <label class="radio" style="margin:0" title="the cost per pack (before tax) is saved as the product's NPP in Product List"><input type="checkbox" id="updNpp" checked> Update NPP from purchase</label></div>
   </div>
 </div>
 
@@ -95,12 +97,13 @@
   <div><b style="color:#1f3d66">List for the sheet</b> <span id="cnt" class="muted"></span></div>
   <div id="listscroll">
     <table id="lt" style="display:none">
-      <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Net Unit Cost (incl tax)</th><th>Tax</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th></th></tr></thead>
+      <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Net Unit Cost (incl tax)</th><th>Tax</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th>Expiry</th><th></th></tr></thead>
       <tbody id="lb"></tbody>
     </table>
     <div id="lempty" class="muted">Nothing yet. Fill the top row, give the kg per size, then “Add to list” (or press Enter).</div>
   </div>
   <div class="bar">
+    <label class="radio" title="the supplier bill total incl tax - only a check">Bill total <input type="text" id="bill" class="ed" style="width:95px" placeholder="incl tax"></label><span id="billD"></span>
     <button id="put" disabled>Put in sheet</button>
     <button id="dl" class="sec">⬇ Download both files</button>
     <span id="msg"></span>
@@ -238,7 +241,7 @@ function recalcPacked() {
     calc.className = 'calc muted';
     calc.textContent = 'Type the rate per pack, choose including / excluding tax and the tax code.';
   }
-  $('errs').innerHTML = errs.length ? errs.map(function (m) { return '<span class="chip">' + esc(m) + '</span>'; }).join('') : '<span class="chip good">✔ Ready - press Enter or click Add to list</span>';
+  showChips(errs, ok && psel && packs > 0 ? priceWarns([{ p: psel, ex: ex }]) : []);
   $('add').disabled = errs.length > 0 || !ok;
   return (errs.length || !ok) ? null : { p: psel, packs: packs, ex: ex, tax: taxCode, t: t };
 }
@@ -368,7 +371,7 @@ function recalc() {
     calc.className = 'calc muted';
     calc.textContent = 'Type the rate, choose including / excluding tax and the tax code.';
   }
-  $('errs').innerHTML = errs.length ? errs.map(function (m) { return '<span class="chip">' + esc(m) + '</span>'; }).join('') : '<span class="chip good">✔ Ready - press Enter or click Add to list</span>';
+  showChips(errs, math ? priceWarns(rows.map(function (r) { return { p: r.p, ex: math.exKg * r.p.g / 1000 }; })) : []);
   $('add').disabled = errs.length > 0 || !math;
   return (errs.length || !math) ? null : { rows: rows, math: math, tax: taxCode, t: TAX[taxCode] };
 }
@@ -406,26 +409,81 @@ function savePrices(ch) {
     .lpSavePrices(ch);
 }
 
+// Red chips = must fix (Add stays off); amber chips = only a check, Add still works.
+function showChips(errs, warns) {
+  var h = errs.map(function (m) { return '<span class="chip">' + esc(m) + '</span>'; }).join('');
+  if (!errs.length) h = '<span class="chip good">✔ Ready - press Enter or click Add to list</span>';
+  h += (warns || []).map(function (m) { return '<span class="chip warn">⚠ ' + esc(m) + '</span>'; }).join('');
+  $('errs').innerHTML = h;
+}
+// (3) wrong-rate check: cost per pack (before tax) far from the product's NPP → warning only
+var RATE_WARN_ = 0.30;   // 30 %
+function priceWarns(list) {
+  var out = [];
+  list.forEach(function (x) {
+    var n = Number(x.p.npp); if (!(n > 0) || !(x.ex > 0)) return;
+    var d = (x.ex - n) / n;
+    if (Math.abs(d) > RATE_WARN_) out.push(x.p.name + ': cost ' + f2(x.ex) + ' vs NPP ' + f2(n) + ' (' + (d > 0 ? '+' : '') + Math.round(d * 100) + '%) - check the rate');
+  });
+  return out;
+}
+// (1) expiry = today + shelf life (Product List G, days, same as the stickers' EXP), as MM/dd/yyyy like the POS sample
+function expOf(p) {
+  var sh = Number(p.shelf); if (!(sh > 0)) return '';
+  var d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + Math.round(sh));
+  var two = function (n) { return (n < 10 ? '0' : '') + n; };
+  return two(d.getMonth() + 1) + '/' + two(d.getDate()) + '/' + d.getFullYear();
+}
+// (6) the purchase cost per pack (before tax) becomes the product's NPP, unless you typed an NPP yourself
+function nppFromPurchase(ch, lines) {
+  if (!$('updNpp').checked) return ch;
+  lines.forEach(function (l) {
+    var c = ch.filter(function (x) { return x.code === l.code; })[0];
+    if (c && c.npp !== undefined) return;
+    var v = Math.round(l.cost * 100) / 100, p = P.filter(function (x) { return x.code === l.code; })[0];
+    if (!p || Number(p.npp) === v) return;
+    if (c) c.npp = v; else ch.push({ code: l.code, npp: v });
+  });
+  return ch;
+}
+// (5) same product, same cost and tax already in the list → add the packs to that line (also in the sheet)
+function mergeOrAdd(it) {
+  var same = items.filter(function (x) { return x.dd === it.dd && x.tax === it.tax && Math.abs(x.cost - it.cost) < 1e-6 && !x.q; })[0];
+  if (!same) {
+    if (items.some(function (x) { return x.dd === it.dd; })) setMsg('<span class="err">⚠ ' + esc(it.name) + ' is already in the list at another cost / tax - added as a separate line.</span>');
+    items.push(it); return it;
+  }
+  var total = same.packs + it.packs;
+  if (!same.done) { same.packs = total; setMsg('<span class="ok">+ ' + it.packs + ' packs added to the line already in the list (' + esc(it.name) + ').</span>'); return null; }
+  same.q = true;
+  google.script.run
+    .withSuccessHandler(function () { same.q = false; same.packs = total; renderList(); setMsg('<span class="ok">+ ' + it.packs + ' packs added to sheet row ' + same.row + ' (' + esc(it.name) + ').</span>'); })
+    .withFailureHandler(function (e) { same.q = false; items.push(it); renderList(); if ($('fast').checked) writeItems([it]); setMsg('<span class="err">Could not add to the existing line (' + esc(e.message) + ') - added as a new line.</span>'); })
+    .lpUpdate(same.row, same.dd, { packs: total, cost: same.cost, tax: same.tax });
+  return null;
+}
+
 function addToList() {
   var pl = recalc();
   if (!pl) return;
   if (mode === 'packed') {
-    var one = { dd: pl.p.dd, name: pl.p.name, packs: pl.packs, cost: round4(pl.ex), tax: pl.tax, t: pl.t, done: false, q: false };
-    items.push(one);
-    savePrices(priceChanges());
+    var one = { dd: pl.p.dd, code: pl.p.code, name: pl.p.name, packs: pl.packs, cost: round4(pl.ex), tax: pl.tax, t: pl.t, exp: expOf(pl.p), done: false, q: false };
+    savePrices(nppFromPurchase(priceChanges(), [one]));
+    one = mergeOrAdd(one);
     psel = null; $('q').value = ''; $('qty').value = ''; $('rate').value = '';
     renderVariants(); renderList();
-    if ($('fast').checked) writeItems([one]);
+    if (one && $('fast').checked) writeItems([one]);
     $('q').focus();   // ready for the next scan
     return;
   }
   var fresh = [];
   pl.rows.forEach(function (r) {
     var cost = round4(pl.math.exKg * r.p.g / 1000);
-    var it = { dd: r.p.dd, name: r.p.name, packs: r.packs, cost: cost, tax: pl.tax, t: pl.t, done: false, q: false };
-    items.push(it); fresh.push(it);
+    var it = { dd: r.p.dd, code: r.p.code, name: r.p.name, packs: r.packs, cost: cost, tax: pl.tax, t: pl.t, exp: expOf(r.p), done: false, q: false };
+    fresh.push(it);
   });
-  savePrices(priceChanges());
+  savePrices(nppFromPurchase(priceChanges(), fresh));
+  fresh = fresh.map(mergeOrAdd).filter(Boolean);
   kgs = {}; manualKg = false; $('q').value = ''; $('qty').value = ''; $('rate').value = '';   // keep rate unit, incl/excl, tax for the next product
   renderVariants(); renderList();
   if ($('fast').checked) writeItems(fresh);
@@ -436,6 +494,15 @@ var editIdx = -1;
 // Net Unit Cost per pack INCLUDING tax, exactly as the sheet stores it (server pcInclCost_: 4 decimals)
 function inclOf(it) { return round4(it.cost * (1 + it.t / 100)); }
 
+var listInc = 0;
+// (2) bill check: compares the list total (incl tax) with the bill total you type - never blocks anything
+function billCheck() {
+  var b = numOf('bill'), box = $('billD');
+  if (isNaN(b) || b <= 0) { box.innerHTML = ''; return; }
+  var d = Math.round((listInc - b) * 100) / 100;
+  box.innerHTML = Math.abs(d) < 1 ? '<span class="ok">✔ matches the bill</span>' :
+    '<span class="chip warn">⚠ list ' + f2(listInc) + ' is ' + f2(Math.abs(d)) + (d > 0 ? ' MORE' : ' LESS') + ' than the bill</span>';
+}
 function renderList() {
   var lb = $('lb'); lb.innerHTML = '';
   var ex = 0, inc = 0;
@@ -447,21 +514,22 @@ function renderList() {
       tr.className = 'editing';
       var opts = Object.keys(TAX).map(function (k) { return '<option' + (k === it.tax ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
       tr.innerHTML = '<td>' + esc(it.dd) + '</td><td class="n"><input type="text" class="ed" id="ePk" value="' + it.packs + '"></td><td class="n"><input type="text" class="ed" id="eCost" value="' + ci + '" title="Net Unit Cost INCLUDING tax"></td>' +
-        '<td><select id="eTax">' + opts + '</select></td><td colspan="2" class="muted" id="eErr"></td>' +
+        '<td><select id="eTax">' + opts + '</select></td><td colspan="3" class="muted" id="eErr"></td>' +
         '<td style="white-space:nowrap"><button class="mini" data-save="' + i + '">✔ Save</button> <button class="sec mini" data-cancel="1">✕</button></td>';
     } else {
       var act = it.q ? '…' : '<button class="sec mini" data-edit="' + i + '" title="Change packs / cost / tax">✎</button> ' +
         (it.sure ? '<button class="mini" data-del="' + i + '">sure?</button>' : '<button class="sec mini" data-del="' + i + '" title="Remove' + (it.done ? ' (empties its row in the sheet)' : '') + '">✕</button>');
       tr.innerHTML = '<td>' + (it.done ? '<span class="ok" title="in the sheet">✔</span> ' : '') + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(ci) + '</td><td>' + esc(it.tax) +
-        '</td><td class="n">' + f2(g) + '</td><td class="n">' + f2(e) + '</td><td style="white-space:nowrap">' + act + '</td>';
+        '</td><td class="n">' + f2(g) + '</td><td class="n">' + f2(e) + '</td><td class="muted">' + esc(it.exp || '') + '</td><td style="white-space:nowrap">' + act + '</td>';
     }
     lb.appendChild(tr);
   });
   if (items.length) {
     var tr = document.createElement('tr'); tr.className = 'tot';
-    tr.innerHTML = '<td>Total (✔ = in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(inc) + '</td><td class="n">' + f2(ex) + '</td><td></td>';
+    tr.innerHTML = '<td>Total (✔ = in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(inc) + '</td><td class="n">' + f2(ex) + '</td><td></td><td></td>';
     lb.appendChild(tr);
   }
+  listInc = inc; billCheck();
   $('lt').style.display = items.length ? '' : 'none';
   $('lempty').style.display = items.length ? 'none' : '';
   $('cnt').textContent = items.length ? '(' + items.length + ' line' + (items.length > 1 ? 's' : '') + ')' : '';
@@ -524,7 +592,7 @@ function pump() {
       writing = false; renderList();
       setMsg('<span class="err">Not written: ' + esc(e.message) + ' (the lines are still in the list)</span>');
     })
-    .lpWrite(arr.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax }; }));
+    .lpWrite(arr.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax, exp: it.exp || '' }; }));
 }
 function putInSheet() { writeItems(items); }
 
@@ -620,7 +688,9 @@ $('lb').addEventListener('keydown', function (e) {
   else if (e.key === 'Escape') { editIdx = -1; renderList(); }
 });
 try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } catch (e) {}
-try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; } catch (e) {}
+try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; if (localStorage.getItem('lp_npp') === '0') $('updNpp').checked = false; } catch (e) {}
+$('updNpp').addEventListener('change', function () { try { localStorage.setItem('lp_npp', $('updNpp').checked ? '1' : '0'); } catch (e) {} });
+$('bill').addEventListener('input', billCheck);
 $('auto').addEventListener('change', function () { try { localStorage.setItem('lp_auto', $('auto').checked ? '1' : '0'); } catch (e) {} if ($('auto').checked) { manualKg = false; renderVariants(); } });
 $('fast').addEventListener('change', function () { try { localStorage.setItem('lp_fast', $('fast').checked ? '1' : '0'); } catch (e) {} });
 $('add').addEventListener('click', addToList);
@@ -748,7 +818,7 @@ $('unit').addEventListener('change', function () { try { localStorage.setItem('l
 $('q').addEventListener('blur', function () { if (mode === 'loose' && !$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; if (autoOn()) renderVariants(); else recalc(); } } });
 
 function init(d) {
-  P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], mrp: r[4] === undefined ? '' : r[4], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
+  P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], mrp: r[4] === undefined ? '' : r[4], shelf: r[5] === undefined ? '' : r[5], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
   d.taxes.forEach(function (t) { TAX[t[0]] = t[1]; });
   var sel = $('tax'); sel.innerHTML = '<option value="">– choose –</option>';
   d.taxes.forEach(function (t) { var o = document.createElement('option'); o.value = t[0]; o.textContent = t[0] + '  (' + t[1] + '%)'; sel.appendChild(o); });

@@ -16,13 +16,13 @@ function openLoosePurchase() {
   SpreadsheetApp.getUi().showModalDialog(html, 'Purchase - loose (kg) or packed (pcs)');
 }
 
-// Product List for the window: [[barcode, name, NPP, dropdown text, MRP], …] + tax codes + default tax.
+// Product List for the window: [[barcode, name, NPP, dropdown text, MRP, shelf days], …] + tax codes + default tax.
 function lpGetData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const list = ss.getSheetByName('Product List');
   const n = Math.max(list.getLastRow() - 1, 1);
   const bn = list.getRange(2, 2, n, 2).getDisplayValues();
-  const npp = list.getRange(2, 5, n, 2).getValues();   // E NPP, F MRP
+  const npp = list.getRange(2, 5, n, 3).getValues();   // E NPP, F MRP, G shelf life (days)
 
   // dropdown text ("barcode name") of the Print Console B2 list, by barcode
   const dd = {};
@@ -42,7 +42,7 @@ function lpGetData() {
   bn.forEach((r, i) => {
     const code = String(r[0]).trim(), name = String(r[1]).trim();
     if (!code || !name) return;
-    products.push([code, name, npp[i][0] === '' ? '' : Number(npp[i][0]), dd[normBar_(code)] || (code + ' ' + name), npp[i][1] === '' ? '' : Number(npp[i][1])]);
+    products.push([code, name, npp[i][0] === '' ? '' : Number(npp[i][0]), dd[normBar_(code)] || (code + ' ' + name), npp[i][1] === '' ? '' : Number(npp[i][1]), Number(npp[i][2]) || '']);
   });
   const sh = ss.getSheetByName(PC_SHEET_);
   return {
@@ -72,7 +72,9 @@ function lpWrite(lines) {
   sh.getRange(first, 1, n, 1).setValues(lines.map(l => [l.dd]));
   sh.getRange(first, 4, n, 1).setValues(lines.map(l => [l.packs]));
   sh.getRange(first, 6, n, 1).setValues(lines.map(l => [l.tax || '']));
-  sh.getRange(first, 11, n, 1).setValues(lines.map(l => [pcInclCost_(l.cost, l.tax)]));   // K = cost per pack INCLUDING tax (the window works ex tax)
+  sh.getRange(first, 11, n, 1).setValues(lines.map(l => [pcInclCost_(l.cost, l.tax)]));
+  // H = Expiry (text MM/dd/yyyy, today + shelf life, worked out in the window); blank when no shelf life
+  sh.getRange(first, 8, n, 1).setNumberFormat('@').setValues(lines.map(l => [/^\d{2}\/\d{2}\/\d{4}$/.test(String(l.exp || '')) ? l.exp : '']));   // K = cost per pack INCLUDING tax (the window works ex tax)
   SpreadsheetApp.flush();
   return { first: first, last: last };
 }
