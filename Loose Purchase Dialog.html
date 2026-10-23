@@ -289,8 +289,9 @@ function renderVariants() {
   cands.forEach(function (p) {
     var tr = document.createElement('tr');
     tr.innerHTML = '<td><input type="checkbox" data-use="' + esc(p.code) + '"' + (useSz[p.code] === false ? '' : ' checked') + '></td><td style="white-space:nowrap"><b>' + esc(sizeLabel(p.g)) + '</b></td><td>' + esc(p.name) + '</td>' + priceCell(p, 'npp') + priceCell(p, 'mrp') +
-      '<td class="n"><input type="text" class="kg" data-c="' + esc(p.code) + '" value="' + esc(kgs[p.code] || '') + '" placeholder="kg"></td>' +
-      '<td class="n" data-pk="' + esc(p.code) + '"></td><td><button class="sec mini" data-fill="' + esc(p.code) + '" title="Put all the remaining kg here">rest ↵</button></td>';
+      '<td class="n"><input type="text" class="kg" data-c="' + esc(p.code) + '" value="' + esc(kgs[p.code] || '') + '" placeholder="kg"' +
+      (cands.length === 1 ? ' readonly title="only one size: the whole quantity goes here by itself" style="background:#eef6ee"' : '') + '></td>' +
+      '<td class="n" data-pk="' + esc(p.code) + '"></td><td>' + (cands.length === 1 ? '<span class="muted" style="font-size:11px">auto</span>' : '<button class="sec mini" data-fill="' + esc(p.code) + '" title="Put all the remaining kg here">rest ↵</button>') + '</td>';
     vb.appendChild(tr);
   });
   recalc();
@@ -299,6 +300,12 @@ function renderVariants() {
 // returns the plan (or errors) and refreshes the live numbers
 function recalc() {
   if (mode === 'packed') return recalcPacked();
+  // no choice = no question: one size only → all the quantity goes to it
+  if (cands.length === 1) {
+    var one = cands[0], qg = qtyG(), v = qg ? String(Math.round(qg) / 1000) : '';
+    kgs[one.code] = v;
+    var inp = document.querySelector('input.kg[data-c="' + CSS.escape(one.code) + '"]'); if (inp && inp.value !== v) inp.value = v;
+  }
   var errs = [], rows = [], sumKg = 0;
   var qG = qtyG(), qKg = qG / 1000;
   cands.forEach(function (p) {
@@ -630,8 +637,26 @@ function splitEqual() {
   var rate = $('rate'); if (qtyG() && !$('add').disabled) $('add').focus(); else rate.focus();
 }
 $('eq').addEventListener('click', splitEqual);
-$('vb').addEventListener('change', function (e) { var c = e.target.getAttribute('data-use'); if (c) useSz[c] = e.target.checked; });
-function kgInputs() { return Array.prototype.slice.call(document.querySelectorAll('input.kg')); }
+$('vb').addEventListener('change', function (e) {
+  var c = e.target.getAttribute('data-use'); if (c) { useSz[c] = e.target.checked; return; }
+  if (e.target.getAttribute('data-c')) autoRest();
+});
+// After a kg box is left: if exactly one ticked size has no kg and some kg are still left, they can only go there.
+function autoRest() {
+  if (mode !== 'loose' || cands.length < 2) return;
+  var qKg = qtyG() / 1000; if (!qKg) return;
+  var used = 0, empty = [];
+  cands.forEach(function (p) {
+    var g = parseSum(kgs[p.code] || '', true);
+    if (g) used += g / 1000; else if (useSz[p.code] !== false) empty.push(p);
+  });
+  var left = Math.round((qKg - used) * 1e6) / 1e6;
+  if (empty.length !== 1 || left <= 0) return;
+  kgs[empty[0].code] = String(left);
+  var inp = document.querySelector('input.kg[data-c="' + CSS.escape(empty[0].code) + '"]'); if (inp) inp.value = kgs[empty[0].code];
+  recalc();
+}
+function kgInputs() { return Array.prototype.slice.call(document.querySelectorAll('input.kg:not([readonly])')); }
 $('q').addEventListener('keydown', function (e) {
   if (e.key !== 'Enter') return;
   e.preventDefault(); e.stopPropagation(); clearTimeout(qTimer); renderVariants();
@@ -655,6 +680,7 @@ $('vb').addEventListener('keydown', function (e) {
     var left = Math.round((qKg - other) * 1e6) / 1e6;
     if (left > 0) { kgs[c] = String(left); e.target.value = kgs[c]; recalc(); }
   }
+  autoRest();
   var used = 0; cands.forEach(function (p) { used += (parseSum(kgs[p.code] || '', true) || 0) / 1000; });
   var k = kgInputs(), at = k.indexOf(e.target);
   // everything split -> straight to Rate, else the next size
