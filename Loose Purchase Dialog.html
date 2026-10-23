@@ -71,7 +71,7 @@
 
 <div id="main">
   <div id="left">
-    <div class="bar" id="lefttop" style="margin:0 0 4px;position:sticky;top:-6px;background:#fff;z-index:3;padding:2px 0"><button id="eq" class="sec" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><span id="rem"></span></div>
+    <div class="bar" id="lefttop" style="margin:0 0 4px;position:sticky;top:-6px;background:#fff;z-index:3;padding:2px 0"><button id="eq" class="sec" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><label class="radio" id="autoL" style="display:none" title="split equally by itself when the quantity / ticks change; typing a kg yourself stops it for this product"><input type="checkbox" id="auto"> Auto split</label><span id="rem"></span></div>
     <div id="hint" class="muted">Loading products…</div>
     <div id="groups" style="margin:4px 0"></div>
     <table id="pt" style="display:none">
@@ -284,6 +284,8 @@ function renderVariants() {
       gb.appendChild(o);
     }
   }
+  if (autoOn()) computeEqual();
+  $('autoL').style.display = cands.length > 1 ? '' : 'none';
   $('vt').style.display = cands.length ? '' : 'none';
   $('eq').style.display = cands.length > 1 ? '' : 'none';
   cands.forEach(function (p) {
@@ -332,6 +334,7 @@ function recalc() {
   else if (left === 0) rem.innerHTML = '<span class="ok">✔ ' + qKg + ' kg fully split.</span>';
   else if (left > 0) rem.innerHTML = '<span class="err">' + sumKg + ' kg of ' + qKg + ' kg split - ' + left + ' kg left.</span>';
   else rem.innerHTML = '<span class="err">' + sumKg + ' kg is MORE than ' + qKg + ' kg (by ' + (-left) + ' kg).</span>';
+  if ($('auto').checked && manualKg && cands.length > 1) rem.innerHTML += ' <span class="muted" title="you typed a kg yourself; click Split equal to split again">· auto split paused</span>';
 
   if (!searchTokens($('q').value).length || !groups.length) errs.unshift('Choose a product');
   else if (!cands.length) errs.unshift('Click the product you bought');
@@ -423,7 +426,7 @@ function addToList() {
     items.push(it); fresh.push(it);
   });
   savePrices(priceChanges());
-  kgs = {}; $('q').value = ''; $('qty').value = ''; $('rate').value = '';   // keep rate unit, incl/excl, tax for the next product
+  kgs = {}; manualKg = false; $('q').value = ''; $('qty').value = ''; $('rate').value = '';   // keep rate unit, incl/excl, tax for the next product
   renderVariants(); renderList();
   if ($('fast').checked) writeItems(fresh);
   $('q').focus();
@@ -557,9 +560,9 @@ function download() {
 var qTimer = null;
 $('q').addEventListener('input', function () {
   // a size typed after the name ("walnut 40kg") becomes the quantity when the quantity box is empty
-  clearTimeout(qTimer); showAll = false; qTimer = setTimeout(renderVariants, 120);
+  clearTimeout(qTimer); showAll = false; manualKg = false; qTimer = setTimeout(renderVariants, 120);
 });
-$('qty').addEventListener('input', recalc);
+$('qty').addEventListener('input', function () { if (autoOn()) renderVariants(); else recalc(); });
 $('rate').addEventListener('input', recalc);
 $('unit').addEventListener('change', recalc);
 $('tax').addEventListener('change', recalc);
@@ -567,7 +570,7 @@ Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r
 $('groups').addEventListener('click', function (e) {
   if (e.target.getAttribute && e.target.getAttribute('data-other')) { showAll = true; renderVariants(); return; }
   var b = e.target.closest ? e.target.closest('[data-g]') : null; if (!b) return;
-  selGroup = b.getAttribute('data-g'); kgs = {}; showAll = false; renderVariants(); $('qty').focus();
+  selGroup = b.getAttribute('data-g'); kgs = {}; showAll = false; manualKg = false; renderVariants(); $('qty').focus();
 });
 function priceInput(e) {
   var f = e.target.getAttribute('data-pr'); if (!f) return false;
@@ -596,7 +599,7 @@ $('vb').addEventListener('input', function (e) {
     e.target.className = 'pr' + (p && pnum(e.target.value) !== (p[f] === '' ? null : Number(p[f])) ? ' chg' : '');
     if (pnum(e.target.value) === null && e.target.value.trim() !== '') e.target.className = 'pr chg';
     return;
-  } var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; recalc(); } });
+  } var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; manualKg = true; recalc(); } });
 $('vb').addEventListener('click', function (e) {
   var c = e.target.getAttribute('data-fill'); if (!c) return;
   var qKg = qtyG() / 1000, other = 0;
@@ -617,6 +620,8 @@ $('lb').addEventListener('keydown', function (e) {
   else if (e.key === 'Escape') { editIdx = -1; renderList(); }
 });
 try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } catch (e) {}
+try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; } catch (e) {}
+$('auto').addEventListener('change', function () { try { localStorage.setItem('lp_auto', $('auto').checked ? '1' : '0'); } catch (e) {} if ($('auto').checked) { manualKg = false; renderVariants(); } });
 $('fast').addEventListener('change', function () { try { localStorage.setItem('lp_fast', $('fast').checked ? '1' : '0'); } catch (e) {} });
 $('add').addEventListener('click', addToList);
 $('put').addEventListener('click', putInSheet);
@@ -652,10 +657,11 @@ function exactSplit(qG, sizes) {
 
 // Equal WEIGHT for every ticked size, whole packs only, adding up exactly when that is possible (exactSplit);
 // otherwise the old way and the small rest is shown as "kg left" to fix by hand.
-function splitEqual() {
-  var qG = qtyG(); if (!qG) { $('rem').innerHTML = '<span class="err">Type the quantity first (e.g. 10kg).</span>'; $('qty').focus(); return; }
+// Sets kgs for an equal split of the ticked sizes (no redraw). Returns '' or a message why it could not.
+function computeEqual() {
+  var qG = qtyG(); if (!qG) return 'Type the quantity first (e.g. 10kg).';
   var sel = cands.filter(function (p) { return useSz[p.code] !== false; });
-  if (!sel.length) { $('rem').innerHTML = '<span class="err">Tick at least one size.</span>'; return; }
+  if (!sel.length) return 'Tick at least one size.';
   var share = qG / sel.length;
   var pk = exactSplit(qG, sel.map(function (p) { return p.g; }));   // exact, as near to equal as possible
   if (pk) { var m = {}; sel.forEach(function (p, i) { m[p.code] = pk[i]; }); pk = m; }
@@ -667,12 +673,21 @@ function splitEqual() {
   }
   kgs = {};
   sel.forEach(function (p) { if (pk[p.code] > 0) kgs[p.code] = String(Math.round(pk[p.code] * p.g) / 1000); });
+  return '';
+}
+function splitEqual() {
+  manualKg = false;   // the button always re-splits (and lets Auto split work again for this product)
+  var why = computeEqual();
+  if (why) { $('rem').innerHTML = '<span class="err">' + esc(why) + '</span>'; if (!qtyG()) $('qty').focus(); return; }
   renderVariants();
   var rate = $('rate'); if (qtyG() && !$('add').disabled) $('add').focus(); else rate.focus();
 }
+// AUTO SPLIT (on / off, remembered): split equally by itself while you have not typed a kg yourself for this product
+var manualKg = false;
+function autoOn() { return $('auto').checked && mode === 'loose' && !manualKg && cands.length > 1 && qtyG() > 0; }
 $('eq').addEventListener('click', splitEqual);
 $('vb').addEventListener('change', function (e) {
-  var c = e.target.getAttribute('data-use'); if (c) { useSz[c] = e.target.checked; return; }
+  var c = e.target.getAttribute('data-use'); if (c) { useSz[c] = e.target.checked; if (autoOn()) renderVariants(); return; }
   if (e.target.getAttribute('data-c')) autoRest();
 });
 // After a kg box is left: if exactly one ticked size has no kg and some kg are still left, they can only go there.
@@ -730,7 +745,7 @@ $('unit').addEventListener('change', function () { try { localStorage.setItem('l
 
 
 // a size typed in the product box and no quantity yet: show it as the quantity hint
-$('q').addEventListener('blur', function () { if (mode === 'loose' && !$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; recalc(); } } });
+$('q').addEventListener('blur', function () { if (mode === 'loose' && !$('qty').value.trim()) { var g = parseSum($('q').value, false); if (g) { $('qty').value = g >= 1000 ? (g / 1000) + 'kg' : g + 'g'; if (autoOn()) renderVariants(); else recalc(); } } });
 
 function init(d) {
   P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], mrp: r[4] === undefined ? '' : r[4], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
