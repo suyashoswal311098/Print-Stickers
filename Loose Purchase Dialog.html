@@ -89,7 +89,7 @@
     <div id="errs" style="min-height:44px;max-height:70px;overflow:auto"></div>
     <button id="add" class="go" disabled>＋ Add to list &nbsp;<span style="font-weight:normal;font-size:12px">(Enter)</span></button>
     <div class="bar" style="margin:0"><label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label>
-    <label class="radio" style="margin:0" title="the cost per pack (before tax) is saved as the product's NPP in Product List"><input type="checkbox" id="updNpp" checked> Update NPP from purchase</label></div>
+    <label class="radio" style="margin:0" title="the cost per pack (before tax) is saved as the product's NPP in Product List - leave OFF when NPP is your selling price"><input type="checkbox" id="updNpp"> Update NPP from purchase</label></div>
   </div>
 </div>
 
@@ -416,14 +416,13 @@ function showChips(errs, warns) {
   h += (warns || []).map(function (m) { return '<span class="chip warn">⚠ ' + esc(m) + '</span>'; }).join('');
   $('errs').innerHTML = h;
 }
-// (3) wrong-rate check: cost per pack (before tax) far from the product's NPP → warning only
-var RATE_WARN_ = 0.30;   // 30 %
+// (3) margin check: NPP is the SELLING price (user, 24 Oct) → warning only when the cost per pack incl tax is not below it
 function priceWarns(list) {
-  var out = [];
+  var out = [], t = TAX[$('tax').value] || 0;
   list.forEach(function (x) {
     var n = Number(x.p.npp); if (!(n > 0) || !(x.ex > 0)) return;
-    var d = (x.ex - n) / n;
-    if (Math.abs(d) > RATE_WARN_) out.push(x.p.name + ': cost ' + f2(x.ex) + ' vs NPP ' + f2(n) + ' (' + (d > 0 ? '+' : '') + Math.round(d * 100) + '%) - check the rate');
+    var c = x.ex * (1 + t / 100);
+    if (c >= n) out.push(x.p.name + ': cost ' + f2(c) + ' (incl tax) is not below NPP ' + f2(n) + ' - no margin, check the rate or NPP');
   });
   return out;
 }
@@ -714,8 +713,8 @@ $('lb').addEventListener('keydown', function (e) {
   else if (e.key === 'Escape') { editIdx = -1; renderList(); }
 });
 try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } catch (e) {}
-try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; if (localStorage.getItem('lp_npp') === '0') $('updNpp').checked = false; } catch (e) {}
-$('updNpp').addEventListener('change', function () { try { localStorage.setItem('lp_npp', $('updNpp').checked ? '1' : '0'); } catch (e) {} });
+try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; $('updNpp').checked = localStorage.getItem('lp_npp2') === '1'; } catch (e) {}
+$('updNpp').addEventListener('change', function () { try { localStorage.setItem('lp_npp2', $('updNpp').checked ? '1' : '0'); } catch (e) {} });
 $('bill').addEventListener('input', billCheck);
 $('auto').addEventListener('change', function () { try { localStorage.setItem('lp_auto', $('auto').checked ? '1' : '0'); } catch (e) {} if ($('auto').checked) { manualKg = false; renderVariants(); } });
 $('fast').addEventListener('change', function () { try { localStorage.setItem('lp_fast', $('fast').checked ? '1' : '0'); } catch (e) {} });

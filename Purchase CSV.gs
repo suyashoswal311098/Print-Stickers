@@ -1,8 +1,8 @@
 /***** PURCHASE CSV — build the POS "Add Purchase by CSV" file from the Product List *****
  * Sheet "Purchase CSV": pick a product in column A (dropdown = the Print Console B2 list, "barcode name",
  * type to search). FORMULAS IN THE HEADER ROW (no script on edit) fill Product Code (the barcode in front
- * of the picked text, so leading zeros stay) + Net Unit Cost (NPP from Product List, or the Cost override
- * in column N). You type Quantity, optionally Variant / Tax Rate Code / Discount / Expiry.
+ * of the picked text, so leading zeros stay) + Net Unit Cost (the Cost override in column N; NPP is the selling
+ * price and is NOT used as cost). You type Quantity, optionally Variant / Tax Rate Code / Discount / Expiry.
  * Tax Rate Code left empty = the Default Tax Rate Code in B2 (applied in the file).
  * Menu Product Tools → Purchase CSV for POS → Download XLSX gives a file with exactly the POS columns:
  *   Product Code | Net Unit Cost | Quantity | Product Variant | Tax Rate Code | Discount | Expiry
@@ -38,7 +38,7 @@ function pcInclCost_(cost, taxCode) {
 
 // Layout version of the Purchase CSV sheet. Raise it whenever setupPurchaseSheet changes formulas/columns:
 // the LOOSE PURCHASE / DOWNLOAD buttons then repair the sheet by themselves (typed lines are kept).
-const PC_LAYOUT_VERSION_ = '9';   // 9 = I Margin vs NPP, NPP / MRP J / K, info L–Q; 8 = Net Unit Cost (C) coloured + typing there = Cost override; 4 = Net Unit Cost incl tax; 5 = ADD PURCHASE button picture; 6 = O NPP / P MRP; 7 = NPP / MRP moved to I / J (info columns now K–P)
+const PC_LAYOUT_VERSION_ = '10';   // 10 = Net Unit Cost no longer from NPP (NPP = selling price); 9 = I Margin vs NPP, NPP / MRP J / K, info L–Q; 8 = Net Unit Cost (C) coloured + typing there = Cost override; 4 = Net Unit Cost incl tax; 5 = ADD PURCHASE button picture; 6 = O NPP / P MRP; 7 = NPP / MRP moved to I / J (info columns now K–P)
 function pcEnsureLayout_() {
   const props = PropertiesService.getDocumentProperties();
   if (props.getProperty('pc_layout') === PC_LAYOUT_VERSION_) return false;
@@ -109,15 +109,15 @@ function setupPurchaseSheet() {
   sh.getRange(PC_HEAD_ROW_, 1, 1, 17).setNumberFormat('General');
   sh.getRange(PC_HEAD_ROW_, 1, 1, 17).setValues([['Product (barcode + name)'].concat(PC_HEADERS_, ['', 'NPP ✎ (Product List)', 'MRP ✎ (Product List)', '', '', 'Cost override INCL tax (optional)', '', '', ''])]);
   sh.getRange(PC_HEAD_ROW_, 2).setFormula('={"Product Code";ARRAYFORMULA(IF(' + A + '="","",IFERROR(REGEXEXTRACT(' + A + '&"","^\\S+"),"")))}');
-  // Net Unit Cost = price INCLUDING tax: the override (column N, already incl tax) or NPP × (1 + tax%)
-  sh.getRange(PC_HEAD_ROW_, 3).setFormula('={"Net Unit Cost";ARRAYFORMULA(IF(' + B + '="","",IF(' + K + '<>"",' + K + ',IFERROR(ROUND(VLOOKUP(' + B +
-    ',{' + bars + ",'Product List'!$E$2:$E},2,FALSE)*(1+" + taxPct + '/100),4),""))))}');
+  // Net Unit Cost = price INCLUDING tax = the Cost override (column N; typed in C, or written by the purchase window).
+  // NPP is the SELLING price (user, 24 Oct), so it is never used as the cost: no override = empty + "⚠ type Net Unit Cost".
+  sh.getRange(PC_HEAD_ROW_, 3).setFormula('={"Net Unit Cost";ARRAYFORMULA(IF(' + B + '="","",IF(ISNUMBER(' + K + '),' + K + ',"")))}');
   // I Margin vs NPP: amount and % of NPP in one cell, e.g. NPP 550, cost 241.50 → "308.50  (56.1%)"
   sh.getRange(PC_HEAD_ROW_, 9).setFormula('={"Margin vs NPP (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + NPP + ')*(' + NPP + '>0),TEXT(' + NPP + '-' + C +
     ',"0.00")&"  ("&TEXT((' + NPP + '-' + C + ')/' + NPP + '*100,"0.0")&"%)",""))}');
   sh.getRange(PC_HEAD_ROW_, 12).setFormula('={"Total incl tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),ROUND(' + C + '*' + D + ',2),""))}');
   sh.getRange(PC_HEAD_ROW_, 13).setFormula('={"Check (info)";ARRAYFORMULA(IF(' + A + '="","",IF(ISNA(VLOOKUP(' + B + ',{' + bars + ',' + bars + '},2,FALSE)),"⚠ not in Product List",' +
-    'IF(NOT(ISNUMBER(' + D + ')),"⚠ type Quantity",IF(' + D + '<=0,"⚠ Quantity must be above 0",IF(NOT(ISNUMBER(' + C + ')),"⚠ no cost - type a Cost override","✔ ok"))))))}');
+    'IF(NOT(ISNUMBER(' + D + ')),"⚠ type Quantity",IF(' + D + '<=0,"⚠ Quantity must be above 0",IF(NOT(ISNUMBER(' + C + ')),"⚠ type Net Unit Cost (column C)","✔ ok"))))))}');
   sh.getRange(PC_HEAD_ROW_, 1, 1, 17).setBackground('#4a86c8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
   sh.getRange(PC_HEAD_ROW_, 1).setBackground('#1f3d66');
   sh.getRange(PC_HEAD_ROW_, 15).setFormula('={"Tax used in file (info)";ARRAYFORMULA(IF(' + A + '="","",IF(' + F + '<>"",' + F + ',IF($B$2="","⚠ no tax",$B$2))))}');
@@ -229,7 +229,7 @@ function pcCollect_() {
     const bad = [];
     if (!c) bad.push(prod ? 'product not found in Product List' : 'no product');
     if (isNaN(qty) || qty <= 0) bad.push('Quantity must be a number above 0');
-    if (isNaN(cost) || cost < 0) bad.push('Net Unit Cost is empty (no NPP in Product List - type a Cost override in column N)');
+    if (isNaN(cost) || cost < 0) bad.push('Net Unit Cost is empty - type the cost (incl tax) in column C');
     if (tax && taxOk.indexOf(tax) < 0) bad.push('Tax Rate Code "' + tax + '" is not a POS code');
     if (bad.length) { problems.push('Row ' + row + ': ' + bad.join('; ')); return; }
     const exp = r[7] instanceof Date ? Utilities.formatDate(r[7], tz, PC_EXPIRY_FORMAT_) : String(r[7]).trim();
