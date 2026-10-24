@@ -733,7 +733,13 @@ function computeEqual() {
   var sel = cands.filter(function (p) { return useSz[p.code] !== false; });
   if (!sel.length) return 'Tick at least one size.';
   var share = qG / sel.length;
-  var pk = exactSplit(qG, sel.map(function (p) { return p.g; }));   // exact, as near to equal as possible
+  // 1st choice (user, 24 Oct): every size gets WHOLE kg (10 kg in 3 sizes → 3 + 3 + 4, not 3.4 + 3.3 + 3.3).
+  // Each size moves in steps of lcm(pack, 1000 g) (200 g → 1 kg = 5 packs, 300 g → 3 kg), then packs = steps × packs per step.
+  var gcd = function (a, b) { return b ? gcd(b, a % b) : a; };
+  var step = sel.map(function (p) { var g = Math.round(p.g); return g > 0 ? g / gcd(g, 1000) * 1000 : 0; });
+  var pk = step.every(function (x) { return x > 0; }) ? exactSplit(qG, step) : null;
+  if (pk) pk = pk.map(function (c, i) { return Math.round(c * step[i] / sel[i].g); });
+  else pk = exactSplit(qG, sel.map(function (p) { return p.g; }));   // no whole-kg way: exact, as near to equal as possible (may give 7.5 kg)
   if (pk) { var m = {}; sel.forEach(function (p, i) { m[p.code] = pk[i]; }); pk = m; }
   else {   // no exact way (e.g. 15.1 kg in 200 g / 500 g packs): old way, the small rest stays as "kg left"
     pk = {}; var used = 0;
