@@ -37,7 +37,7 @@ function pcInclCost_(cost, taxCode) {
 
 // Layout version of the Purchase CSV sheet. Raise it whenever setupPurchaseSheet changes formulas/columns:
 // the LOOSE PURCHASE / DOWNLOAD buttons then repair the sheet by themselves (typed lines are kept).
-const PC_LAYOUT_VERSION_ = '7';   // 4 = Net Unit Cost incl tax; 5 = ADD PURCHASE button picture; 6 = O NPP / P MRP; 7 = NPP / MRP moved to I / J (info columns now K–P)
+const PC_LAYOUT_VERSION_ = '8';   // 8 = Net Unit Cost (C) coloured + typing there = Cost override; 4 = Net Unit Cost incl tax; 5 = ADD PURCHASE button picture; 6 = O NPP / P MRP; 7 = NPP / MRP moved to I / J (info columns now K–P)
 function pcEnsureLayout_() {
   const props = PropertiesService.getDocumentProperties();
   if (props.getProperty('pc_layout') === PC_LAYOUT_VERSION_) return false;
@@ -91,7 +91,7 @@ function setupPurchaseSheet() {
   sh.getRange('O2').setValue('Total ex tax').setHorizontalAlignment('right').setFontWeight('bold');
   sh.getRange('P2').setFormula('=SUM(P' + PC_FIRST_ + ':P' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
   sh.getRange('A3').setValue('Pick/type a product in column A and type Quantity. B, C, K, L, N, O, P are formulas in the header row (do not type there). ' +
-    'B–H go into the file in the POS order (Net Unit Cost is the rate INCLUDING tax). I NPP / J MRP: type a new value to change it in Product List. The grey columns (totals, rate ex tax) are only for you.').setFontColor('#666');
+    'B–H go into the file in the POS order (Net Unit Cost is the rate INCLUDING tax). I NPP / J MRP: type a new value to change it in Product List. C Net Unit Cost: type a new cost (incl tax) to override it. The grey columns (totals, rate ex tax) are only for you.').setFontColor('#666');
 
   // Header row: plain labels, except B, C, K, L, N, O, P = label + ONE array formula that fills the whole column.
   // Spill cells below must be empty, so old values/formulas in those columns are cleared first.
@@ -119,6 +119,7 @@ function setupPurchaseSheet() {
   sh.getRange(PC_HEAD_ROW_, 11, 1, 6).setBackground('#7f7f7f');
   // I / J: NPP / MRP from Product List, typed changes are saved back there (onEdit → pcOnEdit_)
   sh.getRange(PC_HEAD_ROW_, PC_NPP_COL_, 1, 2).setBackground('#b45f06');
+  sh.getRange(PC_HEAD_ROW_, 3).setBackground('#137333');   // C Net Unit Cost: green (typing there = Cost override, pcOnEdit_)
   sh.setFrozenRows(PC_HEAD_ROW_);
 
   // formats: variant + discount + expiry as plain text ("5%" stays as typed); code/cost come from the formulas
@@ -131,6 +132,7 @@ function setupPurchaseSheet() {
   sh.getRange(PC_FIRST_, 11, PC_ROWS_, 1).setNumberFormat('#,##0.00');
   sh.getRange(PC_FIRST_, PC_COST_COL_, PC_ROWS_, 1).setNumberFormat('0.00');
   sh.getRange(PC_FIRST_, PC_NPP_COL_, PC_ROWS_, 2).setNumberFormat('0.00').setBackground('#fff8e1').setHorizontalAlignment('right').setFontColor('#000000');
+  sh.getRange(PC_FIRST_, 3, PC_ROWS_, 1).setBackground('#e6f4ea').setFontWeight('bold');
 
   // dropdowns
   sh.getRange(PC_FIRST_, 1, PC_ROWS_, 1).setDataValidation(rule);

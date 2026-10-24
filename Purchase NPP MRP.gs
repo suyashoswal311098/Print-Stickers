@@ -68,6 +68,27 @@ function pcOnEdit_(e) {
   // product picked / changed / cleared in A → copy its NPP / MRP into I / J
   if (c1 <= 1) { pcFillPrices_(sh, r1, r2); return true; }
 
+  // Net Unit Cost typed in C (user, 24 Oct): C is the header-row formula, so the typed number goes to the Cost override
+  // (M, incl tax) and C is emptied again so the formula shows it. Blank (Delete) = nothing changes.
+  if (c1 <= 3 && c2 >= 3) {
+    const typed = sh.getRange(r1, 3, r2 - r1 + 1, 1).getValues();
+    const bad = [];
+    let saved = 0;
+    typed.forEach((t, i) => {
+      const row = r1 + i;
+      if (t[0] === '' || t[0] === null) return;
+      const v = pcNum_(t[0]);
+      if (!String(sh.getRange(row, 1).getValue()).trim()) bad.push('Row ' + row + ': pick a product first');
+      else if (isNaN(v) || v < 0) bad.push('Row ' + row + ': Net Unit Cost must be a number (0 or more)');
+      else { sh.getRange(row, PC_COST_COL_).setValue(v); saved++; }
+    });
+    sh.getRange(r1, 3, r2 - r1 + 1, 1).clearContent();   // the formula in C4 fills the column again
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (bad.length) ss.toast(bad.slice(0, 3).join('\n'), 'Net Unit Cost', 6);
+    else if (saved) ss.toast('Saved as Cost override (column M). Clear M to use NPP again.', 'Net Unit Cost', 4);
+    return true;
+  }
+
   // NPP / MRP typed in I / J → save in Product List
   if (c2 < PC_NPP_COL_ || c1 > PC_MRP_COL_) return true;
   const look = pcPriceIndex_();
