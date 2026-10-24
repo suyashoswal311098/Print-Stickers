@@ -83,7 +83,7 @@ function lpWrite(lines) {
 // "Download" button of the window: same checks + the same two files as the DOWNLOAD XLSX FILE button.
 function lpDownload() { return pcBuildFiles(); }
 
-// ✎ in the window: change packs / cost / tax of a line already in the sheet (row must still hold the same product).
+// ✎ in the window, or the same product added again: change packs / cost / tax (/ expiry) of a line already in the sheet (row must still hold the same product).
 function lpUpdate(row, dd, v) {
   const sh = lpRowCheck_(row, dd);
   if (!(v.packs > 0) || !(v.cost >= 0)) throw new Error('Packs and cost are not valid.');
@@ -91,14 +91,40 @@ function lpUpdate(row, dd, v) {
   sh.getRange(row, 4).setValue(v.packs);
   sh.getRange(row, 6).setValue(v.tax || '');
   sh.getRange(row, PC_COST_COL_).setValue(pcInclCost_(v.cost, v.tax));
+  if (v.exp !== undefined) sh.getRange(row, 8).setNumberFormat('@').setValue(/^\d{2}\/\d{2}\/\d{4}$/.test(String(v.exp)) ? v.exp : '');   // same product added again: new expiry
   SpreadsheetApp.flush();
   return true;
 }
 
-// ✕ on a line already in the sheet: empties that row's typed cells (the formulas stay; rows below do not move).
+// Lines already in the sheet, for the window's list (user, 24 Oct: change / remove them in the window too).
+// [{row, dd, packs, cost (Net Unit Cost C, INCL tax), tax (F, or the default B2), exp (H)}], rows with a product in A only.
+function lpReadSheet() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
+  if (!sh) return [];
+  SpreadsheetApp.flush();
+  const v = sh.getRange(PC_FIRST_, 1, PC_ROWS_, 8).getValues(), h = sh.getRange(PC_FIRST_, 8, PC_ROWS_, 1).getDisplayValues();
+  const defTax = String(sh.getRange('B2').getValue() || '').trim();
+  const out = [];
+  v.forEach((r, i) => {
+    const dd = String(r[0]).trim();
+    if (!dd) return;
+    out.push({ row: PC_FIRST_ + i, dd: dd, packs: pcNum_(r[3]), cost: pcNum_(r[2]), tax: String(r[5]).trim() || defTax, exp: String(h[i][0]).trim() });
+  });
+  return out;
+}
+
+// ✕ on a line already in the sheet: removes it and moves the lines below up one row (no gap). Only the typed
+// columns move (A, D–J, M); the header-row formulas follow by themselves. The window reloads its list after this.
 function lpClear(row, dd) {
   const sh = lpRowCheck_(row, dd);
-  [1, 4, 5, 6, 7, 8, PC_COST_COL_, PC_NPP_COL_, PC_MRP_COL_].forEach(c => sh.getRange(row, c).clearContent());
+  const end = PC_FIRST_ + PC_ROWS_ - 1;
+  [[1, 1], [4, 7], [PC_COST_COL_, 1]].forEach(([c, w]) => {
+    if (row < end) {
+      const below = sh.getRange(row + 1, c, end - row, w);
+      sh.getRange(row, c, end - row, w).setValues(below.getValues());
+    }
+    sh.getRange(end, c, 1, w).clearContent();
+  });
   SpreadsheetApp.flush();
   return true;
 }

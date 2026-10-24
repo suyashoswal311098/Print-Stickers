@@ -94,7 +94,7 @@
 </div>
 
 <div id="listbox">
-  <div><b style="color:#1f3d66">List for the sheet</b> <span id="cnt" class="muted"></span></div>
+  <div><b style="color:#1f3d66">List for the sheet</b> <span id="cnt" class="muted"></span> <button class="sec mini" id="reload" title="Read the lines that are in the Purchase CSV sheet again (✔ lines = in the sheet; ✎ / ✕ change them there)">↻ from sheet</button></div>
   <div id="listscroll">
     <table id="lt" style="display:none">
       <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Net Unit Cost (incl tax)</th><th>Tax</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th>Expiry</th><th></th></tr></thead>
@@ -446,20 +446,20 @@ function nppFromPurchase(ch, lines) {
   });
   return ch;
 }
-// (5) same product, same cost and tax already in the list → add the packs to that line (also in the sheet)
+// (5) same product already in the list (or in the sheet, ✔ line) → that line is UPDATED with the new packs / cost /
+// tax / expiry instead of adding a second line (user, 24 Oct: "if again write, update existing"). Returns the item
+// still to be written as a new line, or null.
 function mergeOrAdd(it) {
-  var same = items.filter(function (x) { return x.dd === it.dd && x.tax === it.tax && Math.abs(x.cost - it.cost) < 1e-6 && !x.q; })[0];
-  if (!same) {
-    if (items.some(function (x) { return x.dd === it.dd; })) setMsg('<span class="err">⚠ ' + esc(it.name) + ' is already in the list at another cost / tax - added as a separate line.</span>');
-    items.push(it); return it;
-  }
-  var total = same.packs + it.packs;
-  if (!same.done) { same.packs = total; setMsg('<span class="ok">+ ' + it.packs + ' packs added to the line already in the list (' + esc(it.name) + ').</span>'); return null; }
+  var same = items.filter(function (x) { return x.dd === it.dd && !x.q; })[0];
+  if (!same) { items.push(it); return it; }
+  var was = same.packs + ' packs @ ' + f2(inclOf(same));
+  var apply = function () { same.packs = it.packs; same.cost = it.cost; same.tax = it.tax; same.t = it.t; same.exp = it.exp; };
+  if (!same.done) { apply(); setMsg('<span class="ok">↻ ' + esc(it.name) + ' was already in the list (' + was + ') - line updated.</span>'); return null; }
   same.q = true;
   google.script.run
-    .withSuccessHandler(function () { same.q = false; same.packs = total; renderList(); setMsg('<span class="ok">+ ' + it.packs + ' packs added to sheet row ' + same.row + ' (' + esc(it.name) + ').</span>'); })
-    .withFailureHandler(function (e) { same.q = false; items.push(it); renderList(); if ($('fast').checked) writeItems([it]); setMsg('<span class="err">Could not add to the existing line (' + esc(e.message) + ') - added as a new line.</span>'); })
-    .lpUpdate(same.row, same.dd, { packs: total, cost: same.cost, tax: same.tax });
+    .withSuccessHandler(function () { same.q = false; apply(); renderList(); setMsg('<span class="ok">↻ ' + esc(it.name) + ': sheet row ' + same.row + ' updated (was ' + was + ').</span>'); })
+    .withFailureHandler(function (e) { same.q = false; renderList(); setMsg('<span class="err">' + esc(it.name) + ': sheet row ' + same.row + ' not updated (' + esc(e.message) + ') - try again or ↻ from sheet.</span>'); })
+    .lpUpdate(same.row, same.dd, { packs: it.packs, cost: it.cost, tax: it.tax, exp: it.exp || '' });
   return null;
 }
 
@@ -518,7 +518,7 @@ function renderList() {
         '<td style="white-space:nowrap"><button class="mini" data-save="' + i + '">✔ Save</button> <button class="sec mini" data-cancel="1">✕</button></td>';
     } else {
       var act = it.q ? '…' : '<button class="sec mini" data-edit="' + i + '" title="Change packs / cost / tax">✎</button> ' +
-        (it.sure ? '<button class="mini" data-del="' + i + '">sure?</button>' : '<button class="sec mini" data-del="' + i + '" title="Remove' + (it.done ? ' (empties its row in the sheet)' : '') + '">✕</button>');
+        (it.sure ? '<button class="mini" data-del="' + i + '">sure?</button>' : '<button class="sec mini" data-del="' + i + '" title="Remove' + (it.done ? ' (also from the sheet; lines below move up)' : '') + '">✕</button>');
       tr.innerHTML = '<td>' + (it.done ? '<span class="ok" title="in the sheet">✔</span> ' : '') + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(ci) + '</td><td>' + esc(it.tax) +
         '</td><td class="n">' + f2(g) + '</td><td class="n">' + f2(e) + '</td><td class="muted">' + esc(it.exp || '') + '</td><td style="white-space:nowrap">' + act + '</td>';
     }
@@ -560,12 +560,38 @@ function delItem(i) {
   if (!it.sure) { items.forEach(function (x) { x.sure = false; }); it.sure = true; renderList(); return; }
   it.q = true; renderList(); setMsg('Emptying the sheet row…');
   google.script.run
-    .withSuccessHandler(function () { items.splice(items.indexOf(it), 1); renderList(); setMsg('<span class="ok">✔ Removed; its sheet row was emptied.</span>'); })
+    .withSuccessHandler(function () {
+      items.splice(items.indexOf(it), 1);
+      items.forEach(function (x) { if (x.done && x.row > it.row) x.row--; });   // the sheet moved the lines below up one row
+      renderList(); setMsg('<span class="ok">✔ Removed from the sheet (lines below moved up).</span>');
+    })
     .withFailureHandler(function (e) { it.q = false; it.sure = false; renderList(); setMsg('<span class="err">' + esc(e.message) + '</span>'); })
     .lpClear(it.row, it.dd);
 }
 
 function setMsg(html) { $('msg').innerHTML = html; }
+
+// The lines already in the Purchase CSV sheet become ✔ lines of the list (at open and with ↻ from sheet), so they can be
+// changed (✎) or removed (✕) here too. Lines not yet in the sheet stay below them.
+function loadSheet() {
+  if (writing || wq.length || items.some(function (x) { return x.q; })) { setMsg('<span class="err">Wait until the writing is finished, then ↻ again.</span>'); return; }
+  setMsg('Reading the sheet…');
+  google.script.run
+    .withSuccessHandler(function (rows) {
+      var fromSheet = rows.filter(function (r) { return r.packs > 0 && r.cost >= 0; }).map(function (r) {
+        var t = TAX[r.tax] !== undefined ? TAX[r.tax] : 0;
+        var p = P.filter(function (x) { return x.dd === r.dd; })[0];
+        return { dd: r.dd, code: p ? p.code : String(r.dd).split(' ')[0], name: p ? p.name : r.dd, packs: r.packs, cost: round4(r.cost / (1 + t / 100)), tax: r.tax, t: t, exp: r.exp, done: true, q: false, row: r.row };
+      });
+      var skipped = rows.length - fromSheet.length;
+      items = fromSheet.concat(items.filter(function (x) { return !x.done; }));
+      editIdx = -1; renderList();
+      setMsg(fromSheet.length ? '<span class="ok">✔ ' + fromSheet.length + ' line(s) from the sheet' + '.</span>' + (skipped ? ' <span class="err">' + skipped + ' sheet line(s) without packs / cost not shown - fix them in the sheet.</span>' : '') : (skipped ? '<span class="err">' + skipped + ' sheet line(s) without packs / cost - fix them in the sheet.</span>' : ''));
+    })
+    .withFailureHandler(function (e) { setMsg('<span class="err">Could not read the sheet: ' + esc(e.message) + '</span>'); })
+    .lpReadSheet();
+}
+$('reload').addEventListener('click', loadSheet);
 
 // Writes go one after the other (each appends below the last line of the sheet), so fast clicks cannot overlap.
 var wq = [], writing = false;
@@ -838,6 +864,7 @@ function init(d) {
   loaded = true;
   var sm = 'loose'; try { sm = localStorage.getItem('lp_mode') || 'loose'; } catch (e) {}
   setMode(sm);
+  loadSheet();
 }
 if (window.google && google.script) {
   google.script.run.withSuccessHandler(init).withFailureHandler(function (e) { $('hint').innerHTML = '<span class="err">' + esc(e.message) + '</span>'; }).lpGetData();
