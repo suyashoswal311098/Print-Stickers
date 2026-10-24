@@ -1,13 +1,13 @@
-/***** PURCHASE CSV — NPP / MRP columns (I, J, right after Expiry) that you can change in the sheet *****
- * I = NPP, J = MRP of the product on the line, copied from Product List (E, F) when the product is picked in A
- * (by hand, by paste, or by the purchase window). Typing a new NPP / MRP in I / J saves it straight into
- * Product List (first row with that barcode) and refreshes I / J on every other line of the same product.
- * Net Unit Cost (C) uses the NPP when there is no Cost override (M), so a new NPP changes C by itself.
+/***** PURCHASE CSV — NPP / MRP columns (J, K, after the Margin column I) that you can change in the sheet *****
+ * J = NPP, K = MRP of the product on the line, copied from Product List (E, F) when the product is picked in A
+ * (by hand, by paste, or by the purchase window). Typing a new NPP / MRP in J / K saves it straight into
+ * Product List (first row with that barcode) and refreshes J / K on every other line of the same product.
+ * Net Unit Cost (C) uses the NPP when there is no Cost override (N), so a new NPP changes C by itself.
  * Called from onEdit (Space Insert.gs); simple trigger, so it may only touch this spreadsheet.
  */
 
-const PC_NPP_COL_ = 9;    // I
-const PC_MRP_COL_ = 10;   // J
+const PC_NPP_COL_ = 10;   // J
+const PC_MRP_COL_ = 11;   // K
 
 // Product List price lookup: purchase line text ("barcode name", or plain barcode / name) → {row, npp, mrp} | null.
 function pcPriceIndex_() {
@@ -31,7 +31,7 @@ function pcPriceIndex_() {
   };
 }
 
-// Fills I / J of sheet rows r1..r2 from Product List (blank when the line has no product / product not found).
+// Fills J / K of sheet rows r1..r2 from Product List (blank when the line has no product / product not found).
 function pcFillPrices_(sh, r1, r2, look) {
   if (r2 < r1) return;
   look = look || pcPriceIndex_();
@@ -39,7 +39,7 @@ function pcFillPrices_(sh, r1, r2, look) {
   sh.getRange(r1, PC_NPP_COL_, a.length, 2).setValues(a.map(r => { const p = look(r[0]); return p ? [p.npp, p.mrp] : ['', '']; }));
 }
 
-// After NPP / MRP of some products changed in Product List: refresh I / J on every purchase line of those products.
+// After NPP / MRP of some products changed in Product List: refresh J / K on every purchase line of those products.
 // rowsChanged = Product List row numbers.
 function pcRefreshPrices_(rowsChanged) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
@@ -65,11 +65,18 @@ function pcOnEdit_(e) {
   const rows = [];
   for (let r = r1; r <= r2; r++) rows.push(r);
 
-  // product picked / changed / cleared in A → copy its NPP / MRP into I / J
+  // something typed in a formula column (B, I Margin, L–Q info; C only when a pasted row starts in A -
+  // a cost typed in C alone is handled below): emptied again so the
+  // header-row formula keeps filling it
+  const spill = PC_SPILL_COLS_.filter(c => (c !== 3 || c1 <= 1) && c >= c1 && c <= c2);
+  spill.forEach(c => sh.getRange(r1, c, r2 - r1 + 1, 1).clearContent());
+  if (spill.length && c1 === c2) { SpreadsheetApp.getActiveSpreadsheet().toast('This column is filled by a formula - type in the white / coloured ✎ columns.', 'Purchase CSV', 4); return true; }
+
+  // product picked / changed / cleared in A → copy its NPP / MRP into J / K
   if (c1 <= 1) { pcFillPrices_(sh, r1, r2); return true; }
 
   // Net Unit Cost typed in C (user, 24 Oct): C is the header-row formula, so the typed number goes to the Cost override
-  // (M, incl tax) and C is emptied again so the formula shows it. Blank (Delete) = nothing changes.
+  // (N, incl tax) and C is emptied again so the formula shows it. Blank (Delete) = nothing changes.
   if (c1 <= 3 && c2 >= 3) {
     const typed = sh.getRange(r1, 3, r2 - r1 + 1, 1).getValues();
     const bad = [];
@@ -85,11 +92,11 @@ function pcOnEdit_(e) {
     sh.getRange(r1, 3, r2 - r1 + 1, 1).clearContent();   // the formula in C4 fills the column again
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     if (bad.length) ss.toast(bad.slice(0, 3).join('\n'), 'Net Unit Cost', 6);
-    else if (saved) ss.toast('Saved as Cost override (column M). Clear M to use NPP again.', 'Net Unit Cost', 4);
+    else if (saved) ss.toast('Saved as Cost override (column N). Clear N to use NPP again.', 'Net Unit Cost', 4);
     return true;
   }
 
-  // NPP / MRP typed in I / J → save in Product List
+  // NPP / MRP typed in J / K → save in Product List
   if (c2 < PC_NPP_COL_ || c1 > PC_MRP_COL_) return true;
   const look = pcPriceIndex_();
   const list = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Product List');

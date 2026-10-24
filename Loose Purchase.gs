@@ -3,9 +3,9 @@
  * Product Tools → Purchase CSV for POS → "Add loose purchase…" opens "Loose Purchase Dialog".
  * The window does the thinking (find the pack sizes in the product names, split the kg, tax calculator).
  * This file only (1) hands the window the Product List and (2) writes the finished lines into the sheet:
- *   A = dropdown text "barcode name", D = packs, F = tax code, M = Cost override (cost per pack INCLUDING tax; the window
+ *   A = dropdown text "barcode name", D = packs, F = tax code, N = Cost override (cost per pack INCLUDING tax; the window
  *   works ex tax and the server adds the tax with pcInclCost_).
- * B / C / K / L / N / O / P are the header-row formulas of the sheet and are never written here.
+ * B / C / I / L / M / O / P / Q are the header-row formulas of the sheet and are never written here.
  */
 
 function openLoosePurchase() {
@@ -74,8 +74,8 @@ function lpWrite(lines) {
   sh.getRange(first, 6, n, 1).setValues(lines.map(l => [l.tax || '']));
   sh.getRange(first, PC_COST_COL_, n, 1).setValues(lines.map(l => [pcInclCost_(l.cost, l.tax)]));
   // H = Expiry (text MM/dd/yyyy, today + shelf life, worked out in the window); blank when no shelf life
-  sh.getRange(first, 8, n, 1).setNumberFormat('@').setValues(lines.map(l => [/^\d{2}\/\d{2}\/\d{4}$/.test(String(l.exp || '')) ? l.exp : '']));   // M = cost per pack INCLUDING tax (the window works ex tax)
-  pcFillPrices_(sh, first, last);   // I / J = NPP / MRP (a script write does not run onEdit)
+  sh.getRange(first, 8, n, 1).setNumberFormat('@').setValues(lines.map(l => [/^\d{2}\/\d{2}\/\d{4}$/.test(String(l.exp || '')) ? l.exp : '']));   // N = cost per pack INCLUDING tax (the window works ex tax)
+  pcFillPrices_(sh, first, last);   // J / K = NPP / MRP (a script write does not run onEdit)
   SpreadsheetApp.flush();
   return { first: first, last: last };
 }
@@ -114,11 +114,11 @@ function lpReadSheet() {
 }
 
 // ✕ on a line already in the sheet: removes it and moves the lines below up one row (no gap). Only the typed
-// columns move (A, D–J, M); the header-row formulas follow by themselves. The window reloads its list after this.
+// columns move (A, D–H, J–K, N); the header-row formulas follow by themselves. The window reloads its list after this.
 function lpClear(row, dd) {
   const sh = lpRowCheck_(row, dd);
   const end = PC_FIRST_ + PC_ROWS_ - 1;
-  [[1, 1], [4, 7], [PC_COST_COL_, 1]].forEach(([c, w]) => {
+  [[1, 1], [4, 5], [PC_NPP_COL_, 2], [PC_COST_COL_, 1]].forEach(([c, w]) => {
     if (row < end) {
       const below = sh.getRange(row + 1, c, end - row, w);
       sh.getRange(row, c, end - row, w).setValues(below.getValues());
