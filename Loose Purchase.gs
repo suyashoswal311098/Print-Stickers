@@ -3,9 +3,9 @@
  * Product Tools → Purchase CSV for POS → "Add loose purchase…" opens "Loose Purchase Dialog".
  * The window does the thinking (find the pack sizes in the product names, split the kg, tax calculator).
  * This file only (1) hands the window the Product List and (2) writes the finished lines into the sheet:
- *   A = dropdown text "barcode name", D = packs, F = tax code, K = Cost override (cost per pack INCLUDING tax; the window
+ *   A = dropdown text "barcode name", D = packs, F = tax code, M = Cost override (cost per pack INCLUDING tax; the window
  *   works ex tax and the server adds the tax with pcInclCost_).
- * B / C / I / J / L are the header-row formulas of the sheet and are never written here.
+ * B / C / K / L / N / O / P are the header-row formulas of the sheet and are never written here.
  */
 
 function openLoosePurchase() {
@@ -72,10 +72,10 @@ function lpWrite(lines) {
   sh.getRange(first, 1, n, 1).setValues(lines.map(l => [l.dd]));
   sh.getRange(first, 4, n, 1).setValues(lines.map(l => [l.packs]));
   sh.getRange(first, 6, n, 1).setValues(lines.map(l => [l.tax || '']));
-  sh.getRange(first, 11, n, 1).setValues(lines.map(l => [pcInclCost_(l.cost, l.tax)]));
+  sh.getRange(first, PC_COST_COL_, n, 1).setValues(lines.map(l => [pcInclCost_(l.cost, l.tax)]));
   // H = Expiry (text MM/dd/yyyy, today + shelf life, worked out in the window); blank when no shelf life
-  sh.getRange(first, 8, n, 1).setNumberFormat('@').setValues(lines.map(l => [/^\d{2}\/\d{2}\/\d{4}$/.test(String(l.exp || '')) ? l.exp : '']));   // K = cost per pack INCLUDING tax (the window works ex tax)
-  pcFillPrices_(sh, first, last);   // O / P = NPP / MRP (a script write does not run onEdit)
+  sh.getRange(first, 8, n, 1).setNumberFormat('@').setValues(lines.map(l => [/^\d{2}\/\d{2}\/\d{4}$/.test(String(l.exp || '')) ? l.exp : '']));   // M = cost per pack INCLUDING tax (the window works ex tax)
+  pcFillPrices_(sh, first, last);   // I / J = NPP / MRP (a script write does not run onEdit)
   SpreadsheetApp.flush();
   return { first: first, last: last };
 }
@@ -90,7 +90,7 @@ function lpUpdate(row, dd, v) {
   if (v.tax && pcTaxCodes_().indexOf(v.tax) < 0) throw new Error('Tax code "' + v.tax + '" is not a POS code.');
   sh.getRange(row, 4).setValue(v.packs);
   sh.getRange(row, 6).setValue(v.tax || '');
-  sh.getRange(row, 11).setValue(pcInclCost_(v.cost, v.tax));
+  sh.getRange(row, PC_COST_COL_).setValue(pcInclCost_(v.cost, v.tax));
   SpreadsheetApp.flush();
   return true;
 }
@@ -98,7 +98,7 @@ function lpUpdate(row, dd, v) {
 // ✕ on a line already in the sheet: empties that row's typed cells (the formulas stay; rows below do not move).
 function lpClear(row, dd) {
   const sh = lpRowCheck_(row, dd);
-  [1, 4, 5, 6, 7, 8, 11, PC_NPP_COL_, PC_MRP_COL_].forEach(c => sh.getRange(row, c).clearContent());
+  [1, 4, 5, 6, 7, 8, PC_COST_COL_, PC_NPP_COL_, PC_MRP_COL_].forEach(c => sh.getRange(row, c).clearContent());
   SpreadsheetApp.flush();
   return true;
 }

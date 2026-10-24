@@ -2,12 +2,13 @@
  * Sheet "Purchase CSV": pick a product in column A (dropdown = the Print Console B2 list, "barcode name",
  * type to search). FORMULAS IN THE HEADER ROW (no script on edit) fill Product Code (the barcode in front
  * of the picked text, so leading zeros stay) + Net Unit Cost (NPP from Product List, or the Cost override
- * in column K). You type Quantity, optionally Variant / Tax Rate Code / Discount / Expiry.
+ * in column M). You type Quantity, optionally Variant / Tax Rate Code / Discount / Expiry.
  * Tax Rate Code left empty = the Default Tax Rate Code in B2 (applied in the file).
  * Menu Product Tools → Purchase CSV for POS → Download XLSX gives a file with exactly the POS columns:
  *   Product Code | Net Unit Cost | Quantity | Product Variant | Tax Rate Code | Discount | Expiry
- * Sheet columns: A Product | B..H = the 7 POS columns | I Total incl tax (info) | J Check (info) | K Cost override INCL tax (optional) | L Tax used (info) | M Rate ex tax (info) | N Total ex tax (info)
- *   | O NPP, P MRP (Product List values; typing a new one saves it in Product List - Purchase NPP MRP.gs)
+ * Sheet columns: A Product | B..H = the 7 POS columns | I NPP, J MRP (Product List values; typing a new one saves it in
+ *   Product List - Purchase NPP MRP.gs) | K Total incl tax (info) | L Check (info) | M Cost override INCL tax (optional)
+ *   | N Tax used (info) | O Rate ex tax (info) | P Total ex tax (info)
  */
 
 const PC_SHEET_ = 'Purchase CSV';
@@ -25,6 +26,7 @@ const PC_TAX_CODES_ = [
   ['5% GST', '28%GST', 5, 1]
 ];
 const PC_EXPIRY_FORMAT_ = 'MM/dd/yyyy';   // as in the POS sample file (09/26/2019); a date typed in Expiry is written like this
+const PC_COST_COL_ = 13;   // M = Cost override INCL tax (typed, or written by the purchase window)
 const PC_XLSX_MIME_ = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 // Cost × (1 + tax %) for a Tax Rate Code (POS Tax Codes table); no / unknown code = no tax. 4 decimals.
@@ -35,7 +37,7 @@ function pcInclCost_(cost, taxCode) {
 
 // Layout version of the Purchase CSV sheet. Raise it whenever setupPurchaseSheet changes formulas/columns:
 // the LOOSE PURCHASE / DOWNLOAD buttons then repair the sheet by themselves (typed lines are kept).
-const PC_LAYOUT_VERSION_ = '6';   // 4 = Net Unit Cost incl tax, I total incl, M rate ex, N total ex; 5 = ADD PURCHASE button picture; 6 = O NPP / P MRP
+const PC_LAYOUT_VERSION_ = '7';   // 4 = Net Unit Cost incl tax; 5 = ADD PURCHASE button picture; 6 = O NPP / P MRP; 7 = NPP / MRP moved to I / J (info columns now K–P)
 function pcEnsureLayout_() {
   const props = PropertiesService.getDocumentProperties();
   if (props.getProperty('pc_layout') === PC_LAYOUT_VERSION_) return false;
@@ -71,6 +73,12 @@ function setupPurchaseSheet() {
   const sh = ss.getSheetByName(PC_SHEET_) || ss.insertSheet(PC_SHEET_);
   const lastRow = PC_FIRST_ + PC_ROWS_ - 1;
   if (sh.getMaxRows() < lastRow) sh.insertRowsAfter(sh.getMaxRows(), lastRow - sh.getMaxRows());
+  // NPP / MRP sit right after Expiry (I, J). Older sheets: move them there from O / P (layout 6), or make room (layout ≤ 5).
+  // Whole columns move, so typed Cost overrides (old K) go along to M.
+  if (!isNew && String(sh.getRange(PC_HEAD_ROW_, PC_NPP_COL_).getValue()).indexOf('NPP') !== 0) {
+    if (sh.getMaxColumns() >= 16 && String(sh.getRange(PC_HEAD_ROW_, 15).getValue()).indexOf('NPP') === 0) sh.moveColumns(sh.getRange('O:P'), PC_NPP_COL_);
+    else sh.insertColumnsAfter(8, 2);
+  }
   if (sh.getMaxColumns() < 16) sh.insertColumnsAfter(sh.getMaxColumns(), 16 - sh.getMaxColumns());
 
   sh.getRange('A1').setValue('PURCHASE FILE FOR POS  (Add Purchase by CSV)').setFontSize(14).setFontWeight('bold');
@@ -78,39 +86,39 @@ function setupPurchaseSheet() {
   sh.getRange('B2').setDataValidation(SpreadsheetApp.newDataValidation()
     .requireValueInList(pcTaxCodes_(), true).setAllowInvalid(false).build()).setBackground('#fff2cc');
   sh.getRange('G2').setValue('Total incl tax').setHorizontalAlignment('right').setFontWeight('bold');
-  sh.getRange('H2').setFormula('=SUM(I' + PC_FIRST_ + ':I' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
-  sh.getRange('M2').setValue('Total ex tax').setHorizontalAlignment('right').setFontWeight('bold');
-  sh.getRange('N2').setFormula('=SUM(N' + PC_FIRST_ + ':N' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
-  sh.getRange('A3').setValue('Pick/type a product in column A and type Quantity. B, C, I, J, L, M, N are formulas in the header row (do not type there). ' +
-    'B–H go into the file in the POS order (Net Unit Cost is the rate INCLUDING tax); the grey columns (totals, rate ex tax) are only for you. O NPP / P MRP: type a new value to change it in Product List.').setFontColor('#666');
+  sh.getRange('H2').setFormula('=SUM(K' + PC_FIRST_ + ':K' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
+  sh.getRange('M2:N2').clearContent();
+  sh.getRange('O2').setValue('Total ex tax').setHorizontalAlignment('right').setFontWeight('bold');
+  sh.getRange('P2').setFormula('=SUM(P' + PC_FIRST_ + ':P' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
+  sh.getRange('A3').setValue('Pick/type a product in column A and type Quantity. B, C, K, L, N, O, P are formulas in the header row (do not type there). ' +
+    'B–H go into the file in the POS order (Net Unit Cost is the rate INCLUDING tax). I NPP / J MRP: type a new value to change it in Product List. The grey columns (totals, rate ex tax) are only for you.').setFontColor('#666');
 
-  // Header row: plain labels, except B, C, I, J = label + ONE array formula that fills the whole column.
+  // Header row: plain labels, except B, C, K, L, N, O, P = label + ONE array formula that fills the whole column.
   // Spill cells below must be empty, so old values/formulas in those columns are cleared first.
-  [2, 3, 9, 10, 12, 13, 14].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());
+  [2, 3, 11, 12, 14, 15, 16].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());
   const A = 'A' + PC_FIRST_ + ':A' + lastRow, B = 'B' + PC_FIRST_ + ':B' + lastRow, C = 'C' + PC_FIRST_ + ':C' + lastRow;
-  const D = 'D' + PC_FIRST_ + ':D' + lastRow, K = 'K' + PC_FIRST_ + ':K' + lastRow, L = 'L' + PC_FIRST_ + ':L' + lastRow;
+  const D = 'D' + PC_FIRST_ + ':D' + lastRow, K = 'M' + PC_FIRST_ + ':M' + lastRow, L = 'N' + PC_FIRST_ + ':N' + lastRow;   // K = cost override, L = tax used (variable names kept)
   const F = 'F' + PC_FIRST_ + ':F' + lastRow;
   const bars = "'Product List'!$B$2:$B&\"\"";
   // tax % of the tax code used on the line (no / unknown code = 0)
   const taxPct = 'IFERROR(VLOOKUP(' + L + ",'" + PC_TAX_SHEET_ + "'!$B$2:$C$" + (PC_TAX_CODES_.length + 1) + ',2,FALSE),0)';
-  sh.getRange(PC_HEAD_ROW_, 1, 1, 14).setNumberFormat('General');
-  sh.getRange(PC_HEAD_ROW_, 1, 1, 14).setValues([['Product (barcode + name)'].concat(PC_HEADERS_, ['', '', 'Cost override INCL tax (optional)', '', '', ''])]);
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 16).setNumberFormat('General');
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 16).setValues([['Product (barcode + name)'].concat(PC_HEADERS_, ['NPP ✎ (Product List)', 'MRP ✎ (Product List)', '', '', 'Cost override INCL tax (optional)', '', '', ''])]);
   sh.getRange(PC_HEAD_ROW_, 2).setFormula('={"Product Code";ARRAYFORMULA(IF(' + A + '="","",IFERROR(REGEXEXTRACT(' + A + '&"","^\\S+"),"")))}');
-  // Net Unit Cost = price INCLUDING tax: the override (column K, already incl tax) or NPP × (1 + tax%)
+  // Net Unit Cost = price INCLUDING tax: the override (column M, already incl tax) or NPP × (1 + tax%)
   sh.getRange(PC_HEAD_ROW_, 3).setFormula('={"Net Unit Cost";ARRAYFORMULA(IF(' + B + '="","",IF(' + K + '<>"",' + K + ',IFERROR(ROUND(VLOOKUP(' + B +
     ',{' + bars + ",'Product List'!$E$2:$E},2,FALSE)*(1+" + taxPct + '/100),4),""))))}');
-  sh.getRange(PC_HEAD_ROW_, 9).setFormula('={"Total incl tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),ROUND(' + C + '*' + D + ',2),""))}');
-  sh.getRange(PC_HEAD_ROW_, 10).setFormula('={"Check (info)";ARRAYFORMULA(IF(' + A + '="","",IF(ISNA(VLOOKUP(' + B + ',{' + bars + ',' + bars + '},2,FALSE)),"⚠ not in Product List",' +
+  sh.getRange(PC_HEAD_ROW_, 11).setFormula('={"Total incl tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),ROUND(' + C + '*' + D + ',2),""))}');
+  sh.getRange(PC_HEAD_ROW_, 12).setFormula('={"Check (info)";ARRAYFORMULA(IF(' + A + '="","",IF(ISNA(VLOOKUP(' + B + ',{' + bars + ',' + bars + '},2,FALSE)),"⚠ not in Product List",' +
     'IF(NOT(ISNUMBER(' + D + ')),"⚠ type Quantity",IF(' + D + '<=0,"⚠ Quantity must be above 0",IF(NOT(ISNUMBER(' + C + ')),"⚠ no cost - type a Cost override","✔ ok"))))))}');
-  sh.getRange(PC_HEAD_ROW_, 1, 1, 14).setBackground('#4a86c8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  sh.getRange(PC_HEAD_ROW_, 1, 1, 16).setBackground('#4a86c8').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
   sh.getRange(PC_HEAD_ROW_, 1).setBackground('#1f3d66');
-  sh.getRange(PC_HEAD_ROW_, 12).setFormula('={"Tax used in file (info)";ARRAYFORMULA(IF(' + A + '="","",IF(' + F + '<>"",' + F + ',IF($B$2="","⚠ no tax",$B$2))))}');
-  sh.getRange(PC_HEAD_ROW_, 13).setFormula('={"Rate ex tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + '),ROUND(' + C + '/(1+' + taxPct + '/100),2),""))}');
-  sh.getRange(PC_HEAD_ROW_, 14).setFormula('={"Total ex tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),ROUND(' + C + '*' + D + '/(1+' + taxPct + '/100),2),""))}');
-  sh.getRange(PC_HEAD_ROW_, 9, 1, 6).setBackground('#7f7f7f');
-  // O / P: NPP / MRP from Product List, typed changes are saved back there (onEdit → pcOnEdit_)
-  sh.getRange(PC_HEAD_ROW_, PC_NPP_COL_, 1, 2).setValues([['NPP ✎ (Product List)', 'MRP ✎ (Product List)']])
-    .setBackground('#b45f06').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  sh.getRange(PC_HEAD_ROW_, 14).setFormula('={"Tax used in file (info)";ARRAYFORMULA(IF(' + A + '="","",IF(' + F + '<>"",' + F + ',IF($B$2="","⚠ no tax",$B$2))))}');
+  sh.getRange(PC_HEAD_ROW_, 15).setFormula('={"Rate ex tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + '),ROUND(' + C + '/(1+' + taxPct + '/100),2),""))}');
+  sh.getRange(PC_HEAD_ROW_, 16).setFormula('={"Total ex tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),ROUND(' + C + '*' + D + '/(1+' + taxPct + '/100),2),""))}');
+  sh.getRange(PC_HEAD_ROW_, 11, 1, 6).setBackground('#7f7f7f');
+  // I / J: NPP / MRP from Product List, typed changes are saved back there (onEdit → pcOnEdit_)
+  sh.getRange(PC_HEAD_ROW_, PC_NPP_COL_, 1, 2).setBackground('#b45f06');
   sh.setFrozenRows(PC_HEAD_ROW_);
 
   // formats: variant + discount + expiry as plain text ("5%" stays as typed); code/cost come from the formulas
@@ -120,27 +128,27 @@ function setupPurchaseSheet() {
   sh.getRange(PC_FIRST_, 3, PC_ROWS_, 1).setNumberFormat('0.00');
   sh.getRange(PC_FIRST_, 4, PC_ROWS_, 1).setNumberFormat('0.##');
   sh.getRange(PC_FIRST_, 8, PC_ROWS_, 1).setNumberFormat('@');
-  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 1).setNumberFormat('#,##0.00');
-  sh.getRange(PC_FIRST_, 11, PC_ROWS_, 1).setNumberFormat('0.00');
-  sh.getRange(PC_FIRST_, PC_NPP_COL_, PC_ROWS_, 2).setNumberFormat('0.00').setBackground('#fff8e1').setHorizontalAlignment('right');
+  sh.getRange(PC_FIRST_, 11, PC_ROWS_, 1).setNumberFormat('#,##0.00');
+  sh.getRange(PC_FIRST_, PC_COST_COL_, PC_ROWS_, 1).setNumberFormat('0.00');
+  sh.getRange(PC_FIRST_, PC_NPP_COL_, PC_ROWS_, 2).setNumberFormat('0.00').setBackground('#fff8e1').setHorizontalAlignment('right').setFontColor('#000000');
 
   // dropdowns
   sh.getRange(PC_FIRST_, 1, PC_ROWS_, 1).setDataValidation(rule);
   sh.getRange(PC_FIRST_, 6, PC_ROWS_, 1).setDataValidation(SpreadsheetApp.newDataValidation()
     .requireValueInList(pcTaxCodes_(), true).setAllowInvalid(false).build());
 
-  sh.getRange(PC_FIRST_, 9, PC_ROWS_, 6).setFontColor('#666');
-  sh.getRange(PC_FIRST_, 13, PC_ROWS_, 2).setNumberFormat('#,##0.00');
+  sh.getRange(PC_FIRST_, 11, PC_ROWS_, 6).setFontColor('#666');
+  sh.getRange(PC_FIRST_, 15, PC_ROWS_, 2).setNumberFormat('#,##0.00');
   sh.getRange(PC_FIRST_, 2, PC_ROWS_, 7).setHorizontalAlignment('left');
 
-  const jr = sh.getRange(PC_FIRST_, 10, PC_ROWS_, 1);
+  const jr = sh.getRange(PC_FIRST_, 12, PC_ROWS_, 1);
   sh.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule().whenTextStartsWith('⚠').setFontColor('#cc0000').setBold(true).setRanges([jr]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenTextStartsWith('✔').setFontColor('#1e8e3e').setRanges([jr]).build()
   ]);
 
   sh.setColumnWidth(1, 380);
-  [110, 95, 75, 100, 110, 80, 95, 95, 230, 175, 170, 150, 160, 150, 150].forEach((w, i) => sh.setColumnWidth(i + 2, w));
+  [110, 95, 75, 100, 110, 80, 95, 140, 140, 95, 230, 175, 170, 150, 160].forEach((w, i) => sh.setColumnWidth(i + 2, w));
   // NPP / MRP of the lines already there
   const typed = sh.getRange(PC_FIRST_, 1, PC_ROWS_, 1).getValues();
   let usedTo = 0;
@@ -209,7 +217,7 @@ function pcCollect_() {
     const bad = [];
     if (!c) bad.push(prod ? 'product not found in Product List' : 'no product');
     if (isNaN(qty) || qty <= 0) bad.push('Quantity must be a number above 0');
-    if (isNaN(cost) || cost < 0) bad.push('Net Unit Cost is empty (no NPP in Product List - type a Cost override in column K)');
+    if (isNaN(cost) || cost < 0) bad.push('Net Unit Cost is empty (no NPP in Product List - type a Cost override in column M)');
     if (tax && taxOk.indexOf(tax) < 0) bad.push('Tax Rate Code "' + tax + '" is not a POS code');
     if (bad.length) { problems.push('Row ' + row + ': ' + bad.join('; ')); return; }
     const exp = r[7] instanceof Date ? Utilities.formatDate(r[7], tz, PC_EXPIRY_FORMAT_) : String(r[7]).trim();
@@ -362,5 +370,5 @@ function pcClearRows() {
   if (!sh) return;
   if (ui.alert('Clear all purchase lines?', 'This empties Product, Quantity, Variant, Tax, Discount, Expiry, Cost override and the NPP / MRP copies on "' + PC_SHEET_ + '" (rows ' + PC_FIRST_ + ' down). The formulas stay.',
     ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
-  [1, 4, 5, 6, 7, 8, 11, PC_NPP_COL_, PC_MRP_COL_].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());   // O / P only copies: Product List keeps its NPP / MRP
+  [1, 4, 5, 6, 7, 8, PC_COST_COL_, PC_NPP_COL_, PC_MRP_COL_].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());   // I / J only copies: Product List keeps its NPP / MRP
 }

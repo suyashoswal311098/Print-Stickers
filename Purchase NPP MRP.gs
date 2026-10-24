@@ -1,13 +1,13 @@
-/***** PURCHASE CSV — NPP / MRP columns (O, P) that you can change in the sheet *****
- * O = NPP, P = MRP of the product on the line, copied from Product List (E, F) when the product is picked in A
- * (by hand, by paste, or by the purchase window). Typing a new NPP / MRP in O / P saves it straight into
- * Product List (first row with that barcode) and refreshes O / P on every other line of the same product.
- * Net Unit Cost (C) uses the NPP when there is no Cost override (K), so a new NPP changes C by itself.
+/***** PURCHASE CSV — NPP / MRP columns (I, J, right after Expiry) that you can change in the sheet *****
+ * I = NPP, J = MRP of the product on the line, copied from Product List (E, F) when the product is picked in A
+ * (by hand, by paste, or by the purchase window). Typing a new NPP / MRP in I / J saves it straight into
+ * Product List (first row with that barcode) and refreshes I / J on every other line of the same product.
+ * Net Unit Cost (C) uses the NPP when there is no Cost override (M), so a new NPP changes C by itself.
  * Called from onEdit (Space Insert.gs); simple trigger, so it may only touch this spreadsheet.
  */
 
-const PC_NPP_COL_ = 15;   // O
-const PC_MRP_COL_ = 16;   // P
+const PC_NPP_COL_ = 9;    // I
+const PC_MRP_COL_ = 10;   // J
 
 // Product List price lookup: purchase line text ("barcode name", or plain barcode / name) → {row, npp, mrp} | null.
 function pcPriceIndex_() {
@@ -31,7 +31,7 @@ function pcPriceIndex_() {
   };
 }
 
-// Fills O / P of sheet rows r1..r2 from Product List (blank when the line has no product / product not found).
+// Fills I / J of sheet rows r1..r2 from Product List (blank when the line has no product / product not found).
 function pcFillPrices_(sh, r1, r2, look) {
   if (r2 < r1) return;
   look = look || pcPriceIndex_();
@@ -39,7 +39,7 @@ function pcFillPrices_(sh, r1, r2, look) {
   sh.getRange(r1, PC_NPP_COL_, a.length, 2).setValues(a.map(r => { const p = look(r[0]); return p ? [p.npp, p.mrp] : ['', '']; }));
 }
 
-// After NPP / MRP of some products changed in Product List: refresh O / P on every purchase line of those products.
+// After NPP / MRP of some products changed in Product List: refresh I / J on every purchase line of those products.
 // rowsChanged = Product List row numbers.
 function pcRefreshPrices_(rowsChanged) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
@@ -65,10 +65,10 @@ function pcOnEdit_(e) {
   const rows = [];
   for (let r = r1; r <= r2; r++) rows.push(r);
 
-  // product picked / changed / cleared in A → copy its NPP / MRP into O / P
+  // product picked / changed / cleared in A → copy its NPP / MRP into I / J
   if (c1 <= 1) { pcFillPrices_(sh, r1, r2); return true; }
 
-  // NPP / MRP typed in O / P → save in Product List
+  // NPP / MRP typed in I / J → save in Product List
   if (c2 < PC_NPP_COL_ || c1 > PC_MRP_COL_) return true;
   const look = pcPriceIndex_();
   const list = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Product List');
