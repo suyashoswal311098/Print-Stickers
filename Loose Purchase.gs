@@ -75,6 +75,7 @@ function lpWrite(lines) {
   sh.getRange(first, 11, n, 1).setValues(lines.map(l => [pcInclCost_(l.cost, l.tax)]));
   // H = Expiry (text MM/dd/yyyy, today + shelf life, worked out in the window); blank when no shelf life
   sh.getRange(first, 8, n, 1).setNumberFormat('@').setValues(lines.map(l => [/^\d{2}\/\d{2}\/\d{4}$/.test(String(l.exp || '')) ? l.exp : '']));   // K = cost per pack INCLUDING tax (the window works ex tax)
+  pcFillPrices_(sh, first, last);   // O / P = NPP / MRP (a script write does not run onEdit)
   SpreadsheetApp.flush();
   return { first: first, last: last };
 }
@@ -97,7 +98,7 @@ function lpUpdate(row, dd, v) {
 // ✕ on a line already in the sheet: empties that row's typed cells (the formulas stay; rows below do not move).
 function lpClear(row, dd) {
   const sh = lpRowCheck_(row, dd);
-  [1, 4, 5, 6, 7, 8, 11].forEach(c => sh.getRange(row, c).clearContent());
+  [1, 4, 5, 6, 7, 8, 11, PC_NPP_COL_, PC_MRP_COL_].forEach(c => sh.getRange(row, c).clearContent());
   SpreadsheetApp.flush();
   return true;
 }
@@ -119,13 +120,15 @@ function lpSavePrices(changes) {
   const at = {};
   bars.forEach((r, i) => { const k = normBar_(r[0]); if (k && at[k] === undefined) at[k] = i + 2; });
   let done = 0;
+  const rows = [];
   (changes || []).forEach(c => {
     const row = at[normBar_(c.code)];
     if (!row) return;
     const ok = v => typeof v === 'number' && isFinite(v) && v >= 0;
     if (ok(c.npp)) list.getRange(row, 5).setValue(c.npp);
     if (ok(c.mrp)) list.getRange(row, 6).setValue(c.mrp);
-    if (ok(c.npp) || ok(c.mrp)) done++;
+    if (ok(c.npp) || ok(c.mrp)) { done++; rows.push(row); }
   });
+  pcRefreshPrices_(rows);   // NPP / MRP columns of the Purchase CSV lines
   return done;
 }

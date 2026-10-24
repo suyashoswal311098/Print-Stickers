@@ -7,6 +7,7 @@
  * Menu Product Tools → Purchase CSV for POS → Download XLSX gives a file with exactly the POS columns:
  *   Product Code | Net Unit Cost | Quantity | Product Variant | Tax Rate Code | Discount | Expiry
  * Sheet columns: A Product | B..H = the 7 POS columns | I Total incl tax (info) | J Check (info) | K Cost override INCL tax (optional) | L Tax used (info) | M Rate ex tax (info) | N Total ex tax (info)
+ *   | O NPP, P MRP (Product List values; typing a new one saves it in Product List - Purchase NPP MRP.gs)
  */
 
 const PC_SHEET_ = 'Purchase CSV';
@@ -34,7 +35,7 @@ function pcInclCost_(cost, taxCode) {
 
 // Layout version of the Purchase CSV sheet. Raise it whenever setupPurchaseSheet changes formulas/columns:
 // the LOOSE PURCHASE / DOWNLOAD buttons then repair the sheet by themselves (typed lines are kept).
-const PC_LAYOUT_VERSION_ = '5';   // 4 = Net Unit Cost incl tax, I total incl, M rate ex, N total ex; 5 = ADD PURCHASE button picture
+const PC_LAYOUT_VERSION_ = '6';   // 4 = Net Unit Cost incl tax, I total incl, M rate ex, N total ex; 5 = ADD PURCHASE button picture; 6 = O NPP / P MRP
 function pcEnsureLayout_() {
   const props = PropertiesService.getDocumentProperties();
   if (props.getProperty('pc_layout') === PC_LAYOUT_VERSION_) return false;
@@ -70,7 +71,7 @@ function setupPurchaseSheet() {
   const sh = ss.getSheetByName(PC_SHEET_) || ss.insertSheet(PC_SHEET_);
   const lastRow = PC_FIRST_ + PC_ROWS_ - 1;
   if (sh.getMaxRows() < lastRow) sh.insertRowsAfter(sh.getMaxRows(), lastRow - sh.getMaxRows());
-  if (sh.getMaxColumns() < 14) sh.insertColumnsAfter(sh.getMaxColumns(), 14 - sh.getMaxColumns());
+  if (sh.getMaxColumns() < 16) sh.insertColumnsAfter(sh.getMaxColumns(), 16 - sh.getMaxColumns());
 
   sh.getRange('A1').setValue('PURCHASE FILE FOR POS  (Add Purchase by CSV)').setFontSize(14).setFontWeight('bold');
   sh.getRange('A2').setValue('Default Tax Rate Code  →').setHorizontalAlignment('right').setFontWeight('bold');
@@ -81,7 +82,7 @@ function setupPurchaseSheet() {
   sh.getRange('M2').setValue('Total ex tax').setHorizontalAlignment('right').setFontWeight('bold');
   sh.getRange('N2').setFormula('=SUM(N' + PC_FIRST_ + ':N' + lastRow + ')').setNumberFormat('#,##0.00').setFontWeight('bold');
   sh.getRange('A3').setValue('Pick/type a product in column A and type Quantity. B, C, I, J, L, M, N are formulas in the header row (do not type there). ' +
-    'B–H go into the file in the POS order (Net Unit Cost is the rate INCLUDING tax); the grey columns (totals, rate ex tax) are only for you.').setFontColor('#666');
+    'B–H go into the file in the POS order (Net Unit Cost is the rate INCLUDING tax); the grey columns (totals, rate ex tax) are only for you. O NPP / P MRP: type a new value to change it in Product List.').setFontColor('#666');
 
   // Header row: plain labels, except B, C, I, J = label + ONE array formula that fills the whole column.
   // Spill cells below must be empty, so old values/formulas in those columns are cleared first.
@@ -107,6 +108,9 @@ function setupPurchaseSheet() {
   sh.getRange(PC_HEAD_ROW_, 13).setFormula('={"Rate ex tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + '),ROUND(' + C + '/(1+' + taxPct + '/100),2),""))}');
   sh.getRange(PC_HEAD_ROW_, 14).setFormula('={"Total ex tax (info)";ARRAYFORMULA(IF(ISNUMBER(' + C + ')*ISNUMBER(' + D + '),ROUND(' + C + '*' + D + '/(1+' + taxPct + '/100),2),""))}');
   sh.getRange(PC_HEAD_ROW_, 9, 1, 6).setBackground('#7f7f7f');
+  // O / P: NPP / MRP from Product List, typed changes are saved back there (onEdit → pcOnEdit_)
+  sh.getRange(PC_HEAD_ROW_, PC_NPP_COL_, 1, 2).setValues([['NPP ✎ (Product List)', 'MRP ✎ (Product List)']])
+    .setBackground('#b45f06').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
   sh.setFrozenRows(PC_HEAD_ROW_);
 
   // formats: variant + discount + expiry as plain text ("5%" stays as typed); code/cost come from the formulas
@@ -118,6 +122,7 @@ function setupPurchaseSheet() {
   sh.getRange(PC_FIRST_, 8, PC_ROWS_, 1).setNumberFormat('@');
   sh.getRange(PC_FIRST_, 9, PC_ROWS_, 1).setNumberFormat('#,##0.00');
   sh.getRange(PC_FIRST_, 11, PC_ROWS_, 1).setNumberFormat('0.00');
+  sh.getRange(PC_FIRST_, PC_NPP_COL_, PC_ROWS_, 2).setNumberFormat('0.00').setBackground('#fff8e1').setHorizontalAlignment('right');
 
   // dropdowns
   sh.getRange(PC_FIRST_, 1, PC_ROWS_, 1).setDataValidation(rule);
@@ -135,7 +140,12 @@ function setupPurchaseSheet() {
   ]);
 
   sh.setColumnWidth(1, 380);
-  [110, 95, 75, 100, 110, 80, 95, 95, 230, 175, 170, 150, 160].forEach((w, i) => sh.setColumnWidth(i + 2, w));
+  [110, 95, 75, 100, 110, 80, 95, 95, 230, 175, 170, 150, 160, 150, 150].forEach((w, i) => sh.setColumnWidth(i + 2, w));
+  // NPP / MRP of the lines already there
+  const typed = sh.getRange(PC_FIRST_, 1, PC_ROWS_, 1).getValues();
+  let usedTo = 0;
+  typed.forEach((r, i) => { if (String(r[0]).trim()) usedTo = i + 1; });
+  pcFillPrices_(sh, PC_FIRST_, PC_FIRST_ + usedTo - 1);
   sh.activate();
   sh.getRange(PC_FIRST_, 1).activate();
   try { pcPlaceButtons(true); } catch (err) { console.warn('Purchase CSV buttons: ' + err.message); }
@@ -350,7 +360,7 @@ function pcClearRows() {
   const ui = SpreadsheetApp.getUi();
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
   if (!sh) return;
-  if (ui.alert('Clear all purchase lines?', 'This empties Product, Quantity, Variant, Tax, Discount, Expiry and Cost override on "' + PC_SHEET_ + '" (rows ' + PC_FIRST_ + ' down). The formulas stay.',
+  if (ui.alert('Clear all purchase lines?', 'This empties Product, Quantity, Variant, Tax, Discount, Expiry, Cost override and the NPP / MRP copies on "' + PC_SHEET_ + '" (rows ' + PC_FIRST_ + ' down). The formulas stay.',
     ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
-  [1, 4, 5, 6, 7, 8, 11].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());
+  [1, 4, 5, 6, 7, 8, 11, PC_NPP_COL_, PC_MRP_COL_].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());   // O / P only copies: Product List keeps its NPP / MRP
 }

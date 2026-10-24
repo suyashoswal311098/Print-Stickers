@@ -1,4 +1,5 @@
 function onEdit(e) {
+  if (pcOnEdit_(e)) return;   // Purchase CSV: NPP / MRP columns (Purchase NPP MRP.gs)
   const range = e.range;
   const sheet = range.getSheet();
   const ss = e.source;
