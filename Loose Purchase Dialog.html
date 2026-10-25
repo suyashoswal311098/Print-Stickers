@@ -66,6 +66,7 @@
   <label><span id="rateL">Rate</span> <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
   <label id="unitL">Rate is <select id="unit"><option value="kg">per kg</option><option value="all">whole qty</option></select></label>
   <label>Tax code <select id="tax"></select></label>
+  <label title="Extra charge the supplier adds to the goods BEFORE GST, e.g. APMC / market fee 0.80%. GST is then charged on goods + this. Only used when the rate EXCLUDES tax.">Extra % before tax <input type="text" id="apmc" placeholder="0" style="width:48px" autocomplete="off"></label>
   <div><div class="muted" style="font-size:11px;font-weight:bold;color:#444">Rate…</div>
     <div class="seg" id="seg"><label id="sIncl"><input type="radio" name="inc" value="incl">INCLUDES tax</label><label id="sExcl"><input type="radio" name="inc" value="excl">EXCLUDES tax</label></div></div>
 </div>
@@ -141,9 +142,10 @@ function sizeLabel(g) { return g >= 1000 ? (g / 1000) + ' kg' : g + ' g'; }
 function round4(x) { return Math.round(x * 10000) / 10000; }
 // Rate maths. rate: typed number, perKg: true = rate is per kg else for the whole qty,
 // incl: rate includes tax, taxPct: tax %, qtyKg. Returns {exKg, inclKg} (per kg, 4 decimals).
-function rateMath(rate, perKg, incl, taxPct, qtyKg) {
+// extraPct: charge added before tax (APMC), only when the rate excludes tax.
+function rateMath(rate, perKg, incl, taxPct, qtyKg, extraPct) {
   var perKgRate = perKg ? rate : rate / qtyKg;
-  var ex = incl ? perKgRate / (1 + taxPct / 100) : perKgRate;
+  var ex = incl ? perKgRate / (1 + taxPct / 100) : perKgRate * (1 + (extraPct || 0) / 100);
   return { exKg: ex, inclKg: ex * (1 + taxPct / 100) };
 }
 // ---------- end pure helpers ----------
@@ -155,6 +157,9 @@ var $ = function (id) { return document.getElementById(id); };
 function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 function f2(x) { return (Math.round(x * 100) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
+// "Extra % before tax" box (APMC); blank / invalid = 0
+function extraPct() { var v = parseFloat(($('apmc').value || '').replace(/,/g, '')); return isFinite(v) && v > 0 ? v : 0; }
+function extraNote(inc) { var x = extraPct(); return x && inc === 'excl' ? ' · includes +' + x + '% extra before tax' : (x ? ' · extra % ignored (rate includes tax)' : ''); }
 function numOf(id) { var v = $(id).value.replace(/,/g, '').trim(); return v !== '' && isFinite(v) ? Number(v) : NaN; }
 function qtyG() { return parseSum($('qty').value, true) || parseSum($('q').value, false); }
 
@@ -229,13 +234,13 @@ function recalcPacked() {
   if (!taxCode) errs.push('Choose the Tax Rate Code');
   var calc = $('calc'), ok = false, t = TAX[taxCode], ex = 0;
   if (!isNaN(rate) && rate > 0 && inc && taxCode) {
-    ex = inc === 'incl' ? rate / (1 + t / 100) : rate;
+    ex = inc === 'incl' ? rate / (1 + t / 100) : rate * (1 + extraPct() / 100);
     var n = packs > 0 ? packs : 0;
     calc.className = 'calc';
     calc.innerHTML = '<table class="ct"><tr><th></th><th class="n">Before tax</th><th class="n">Tax ' + t + '%</th><th class="n">With tax</th></tr>' +
       '<tr><td>Per pack</td><td class="n">' + f2(ex) + '</td><td class="n">' + f2(ex * t / 100) + '</td><td class="n"><b>' + f2(ex * (1 + t / 100)) + '</b></td></tr>' +
       (n ? '<tr class="cq"><td>' + n + ' pack' + (n > 1 ? 's' : '') + '</td><td class="n">' + f2(ex * n) + '</td><td class="n">' + f2(ex * n * t / 100) + '</td><td class="n"><b>' + f2(ex * n * (1 + t / 100)) + '</b></td></tr>' : '') +
-      '</table><div class="muted" style="margin-top:3px">Tax code ' + esc(taxCode) + ' · "With tax" per pack = Net Unit Cost</div>';
+      '</table><div class="muted" style="margin-top:3px">Tax code ' + esc(taxCode) + ' · "With tax" per pack = Net Unit Cost' + extraNote(inc) + '</div>';
     ok = true;
   } else {
     calc.className = 'calc muted';
@@ -353,7 +358,7 @@ function recalc() {
   if (!taxCode) errs.push('Choose the Tax Rate Code');
   if (!isNaN(rate) && rate > 0 && inc && taxCode && qG) {
     var t = TAX[taxCode];
-    math = rateMath(rate, $('unit').value === 'kg', inc === 'incl', t, qKg);
+    math = rateMath(rate, $('unit').value === 'kg', inc === 'incl', t, qKg, extraPct());
     var tot = math.exKg * qKg;
     calc.className = 'calc';
     // calculator as a small table: per kg / whole quantity, then one row per pack size
@@ -366,7 +371,7 @@ function recalc() {
         '</td><td class="n"><b>' + f2(round4(math.inclKg * r.p.g / 1000)) + '</b></td></tr>';
     });
     calc.className = 'calc';
-    calc.innerHTML = ct + '</table><div class="muted" style="margin-top:3px">Tax code ' + esc(taxCode) + ' · pack prices = Net Unit Cost per pack</div>';
+    calc.innerHTML = ct + '</table><div class="muted" style="margin-top:3px">Tax code ' + esc(taxCode) + ' · pack prices = Net Unit Cost per pack' + extraNote(inc) + '</div>';
   } else {
     calc.className = 'calc muted';
     calc.textContent = 'Type the rate, choose including / excluding tax and the tax code.';
@@ -632,6 +637,7 @@ $('q').addEventListener('input', function () {
 });
 $('qty').addEventListener('input', function () { if (autoOn()) renderVariants(); else recalc(); });
 $('rate').addEventListener('input', recalc);
+$('apmc').addEventListener('input', function () { recalc(); try { localStorage.setItem('lp_apmc', $('apmc').value); } catch (e) {} });
 $('unit').addEventListener('change', recalc);
 $('tax').addEventListener('change', recalc);
 Array.prototype.forEach.call(document.getElementsByName('inc'), function (r) { r.addEventListener('change', recalc); });
@@ -824,6 +830,7 @@ function init(d) {
   d.taxes.forEach(function (t) { var o = document.createElement('option'); o.value = t[0]; o.textContent = t[0] + '  (' + t[1] + '%)'; sel.appendChild(o); });
   if (d.defTax && TAX[d.defTax] !== undefined) sel.value = d.defTax;
   try {
+    var sa = localStorage.getItem('lp_apmc'); if (sa) $('apmc').value = sa;
     var st = localStorage.getItem('lp_tax'); if (st && TAX[st] !== undefined) sel.value = st;
     var si = localStorage.getItem('lp_inc'); if (si) { var rr = document.querySelector('input[name=inc][value=' + si + ']'); if (rr) rr.checked = true; }
     var su = localStorage.getItem('lp_unit'); if (su) $('unit').value = su;
