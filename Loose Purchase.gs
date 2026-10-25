@@ -48,8 +48,19 @@ function lpGetData() {
   return {
     products: products,
     taxes: PC_TAX_CODES_.map(t => [t[1], t[2]]),
-    defTax: String(sh.getRange('B2').getValue() || '').trim()
+    defTax: String(sh.getRange('B2').getValue() || '').trim(),
+    draft: PropertiesService.getUserProperties().getProperty(lpDraftKey_()) || ''
   };
+}
+
+// Window lines NOT yet in the sheet, kept so they come back after the window / page is closed (user, 25 Oct).
+// Per user + spreadsheet; json = '{"ts":…,"lines":[…]}' or '' to forget. Max ~9 KB per property (≈ 60 lines).
+function lpDraftKey_() { return 'lp_draft_' + SpreadsheetApp.getActiveSpreadsheet().getId(); }
+function lpSaveDraft(json) {
+  const props = PropertiesService.getUserProperties();
+  if (!json) props.deleteProperty(lpDraftKey_());
+  else props.setProperty(lpDraftKey_(), json);
+  return true;
 }
 
 // lines = [{dd, packs, cost, tax}] → appended below the last product in column A. Returns {first, last}.

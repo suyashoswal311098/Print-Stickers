@@ -537,6 +537,7 @@ function renderList() {
   $('put').disabled = !pend;
   $('put').textContent = pend ? 'Put ' + pend + ' line(s) in sheet' : 'Put in sheet';
   if (editIdx >= 0 && $('ePk')) { $('ePk').focus(); $('ePk').select(); }
+  saveDraft();
 }
 
 function saveEdit(i) {
@@ -575,6 +576,26 @@ function delItem(i) {
 
 function setMsg(html) { $('msg').innerHTML = html; }
 
+// DRAFT: lines not yet in the sheet are kept (this browser at once + the user's Google account a moment later) and
+// come back the next time the window opens, so closing the window / reloading the page does not lose them.
+var draftReady = false, draftTimer = null, restored = null;
+function saveDraft() {
+  if (!draftReady) return;   // not before the old draft was read
+  var lines = items.filter(function (x) { return !x.done; }).map(function (x) { return { dd: x.dd, code: x.code, name: x.name, packs: x.packs, cost: x.cost, tax: x.tax, t: x.t, exp: x.exp || '' }; });
+  var json = lines.length ? JSON.stringify({ ts: Date.now(), lines: lines }) : '';
+  try { if (json) localStorage.setItem('lp_draft', json); else localStorage.removeItem('lp_draft'); } catch (e) {}
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(function () { google.script.run.withFailureHandler(function () {}).lpSaveDraft(json.length > 8500 ? '' : json); }, 1200);
+}
+// newest of the account copy and this browser's copy
+function readDraft(serverJson) {
+  var best = null;
+  [serverJson, (function () { try { return localStorage.getItem('lp_draft'); } catch (e) { return ''; } })()].forEach(function (j) {
+    try { var o = j && JSON.parse(j); if (o && o.lines && o.lines.length && (!best || o.ts > best.ts)) best = o; } catch (e) {}
+  });
+  return best ? best.lines.filter(function (l) { return l && l.dd && l.packs > 0 && l.cost >= 0; }) : [];
+}
+
 // The lines already in the Purchase CSV sheet become ✔ lines of the list (at open and with ↻ from sheet), so they can be
 // changed (✎) or removed (✕) here too. Lines not yet in the sheet stay below them.
 function loadSheet() {
@@ -587,12 +608,18 @@ function loadSheet() {
         var p = P.filter(function (x) { return x.dd === r.dd; })[0];
         return { dd: r.dd, code: p ? p.code : String(r.dd).split(' ')[0], name: p ? p.name : r.dd, packs: r.packs, cost: round4(r.cost / (1 + t / 100)), tax: r.tax, t: t, exp: r.exp, done: true, q: false, row: r.row };
       });
-      var skipped = rows.length - fromSheet.length;
+      var skipped = rows.length - fromSheet.length, back = 0;
+      if (restored) {   // lines kept from last time: drop the ones the sheet already has (written just before closing)
+        var inSheet = {}; fromSheet.forEach(function (r) { inSheet[r.dd] = true; });
+        items = items.filter(function (x) { return x.done || !x.restored || !inSheet[x.dd]; });
+        back = items.filter(function (x) { return x.restored; }).length; restored = null;
+      }
       items = fromSheet.concat(items.filter(function (x) { return !x.done; }));
-      editIdx = -1; renderList();
+      editIdx = -1; draftReady = true; renderList();
+      if (back) { setMsg('<span class="ok">↩ ' + back + ' line(s) from last time that were NOT in the sheet are back in the list - Put in sheet or Download.</span>'); return; }
       setMsg(fromSheet.length ? '<span class="ok">✔ ' + fromSheet.length + ' line(s) from the sheet' + '.</span>' + (skipped ? ' <span class="err">' + skipped + ' sheet line(s) without packs / cost not shown - fix them in the sheet.</span>' : '') : (skipped ? '<span class="err">' + skipped + ' sheet line(s) without packs / cost - fix them in the sheet.</span>' : ''));
     })
-    .withFailureHandler(function (e) { setMsg('<span class="err">Could not read the sheet: ' + esc(e.message) + '</span>'); })
+    .withFailureHandler(function (e) { draftReady = true; restored = null; renderList(); setMsg('<span class="err">Could not read the sheet: ' + esc(e.message) + '</span>'); })
     .lpReadSheet();
 }
 $('reload').addEventListener('click', loadSheet);
@@ -886,6 +913,8 @@ function init(d) {
   loaded = true;
   var sm = 'loose'; try { sm = localStorage.getItem('lp_mode') || 'loose'; } catch (e) {}
   setMode(sm);
+  restored = readDraft(d.draft);
+  items = restored.map(function (l) { return { dd: l.dd, code: l.code, name: l.name, packs: l.packs, cost: l.cost, tax: l.tax, t: TAX[l.tax] !== undefined ? TAX[l.tax] : (l.t || 0), exp: l.exp, done: false, q: false, restored: true }; });
   loadSheet();
 }
 if (window.google && google.script) {
