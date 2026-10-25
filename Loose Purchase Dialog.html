@@ -557,7 +557,11 @@ function saveEdit(i) {
 function delItem(i) {
   var it = items[i]; if (!it || it.q) return;
   if (!it.done) { items.splice(i, 1); editIdx = -1; renderList(); return; }
-  if (!it.sure) { items.forEach(function (x) { x.sure = false; }); it.sure = true; renderList(); return; }
+  if (!it.sure) {   // "sure?" goes back to ✕ after 8 s
+    items.forEach(function (x) { x.sure = false; }); it.sure = true; renderList();
+    clearTimeout(delItem.t); delItem.t = setTimeout(function () { if (it.sure && !it.q) { it.sure = false; renderList(); } }, 8000);
+    return;
+  }
   it.q = true; renderList(); setMsg('Emptying the sheet row…');
   google.script.run
     .withSuccessHandler(function () {
@@ -593,14 +597,14 @@ function loadSheet() {
 }
 $('reload').addEventListener('click', loadSheet);
 
-// 🗑 Clear all lines: 1st click asks (button turns red "sure?"), 2nd click within 5 s empties the list and the sheet lines.
+// 🗑 Clear all lines: 1st click asks (button turns red "sure?"), 2nd click within 8 s empties the list and the sheet lines.
 var clrSure = null;
 $('clr').addEventListener('click', function () {
   var b = $('clr');
   if (writing || wq.length || items.some(function (x) { return x.q; })) { setMsg('<span class="err">Wait until the writing is finished.</span>'); return; }
   if (!clrSure) {
     b.textContent = 'sure? list + sheet'; b.style.background = '#b3261e'; b.style.color = '#fff';
-    clrSure = setTimeout(resetClr, 5000);
+    clrSure = setTimeout(resetClr, 8000);
     return;
   }
   resetClr(); b.disabled = true; setMsg('Clearing all lines…');
