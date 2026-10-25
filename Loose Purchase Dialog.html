@@ -101,6 +101,7 @@
       <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Net Unit Cost (incl tax)</th><th>Tax</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th>Expiry</th><th></th></tr></thead>
       <tbody id="lb"></tbody>
     </table>
+    <table id="gst" style="display:none;margin-top:4px" title="Like the supplier bill's tax table: taxable value, CGST, SGST per tax code"></table>
     <div id="lempty" class="muted">Nothing yet. Fill the top row, give the kg per size, then “Add to list” (or press Enter).</div>
   </div>
   <div class="bar">
@@ -541,6 +542,25 @@ function renderList() {
     var tr = document.createElement('tr'); tr.className = 'tot';
     tr.innerHTML = '<td>Total (✔ = in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(inc) + '</td><td class="n">' + f2(ex) + '</td><td></td><td></td>';
     lb.appendChild(tr);
+  }
+  // GST breakup per tax code (taxable = total ex tax, tax split half CGST / half SGST)
+  var gb = {}, gk = [];
+  items.forEach(function (it) {
+    var g = it.packs * inclOf(it), e = g / (1 + it.t / 100), b = gb[it.tax];
+    if (!b) { b = gb[it.tax] = { t: it.t, tv: 0, tx: 0 }; gk.push(it.tax); }
+    b.tv += e; b.tx += g - e;
+  });
+  var gt = $('gst');
+  if (!gk.length) { gt.style.display = 'none'; gt.innerHTML = ''; }
+  else {
+    var th = 0, tc = 0, tt = 0, h = '<tr><th>GST breakup</th><th class="n">Taxable value</th><th class="n">CGST</th><th class="n">SGST</th><th class="n">Total tax</th></tr>';
+    gk.forEach(function (k) {
+      var b = gb[k], c = Math.round(b.tx * 100 / 2) / 100, tx = Math.round(b.tx * 100) / 100;
+      th += b.tv; tc += c; tt += tx;
+      h += '<tr><td>' + esc(k) + ' <span class="muted">(' + (b.t / 2) + '% + ' + (b.t / 2) + '%)</span></td><td class="n">' + f2(b.tv) + '</td><td class="n">' + f2(c) + '</td><td class="n">' + f2(tx - c) + '</td><td class="n">' + f2(tx) + '</td></tr>';
+    });
+    if (gk.length > 1) h += '<tr class="tot"><td>Total</td><td class="n">' + f2(th) + '</td><td class="n">' + f2(tc) + '</td><td class="n">' + f2(tt - tc) + '</td><td class="n">' + f2(tt) + '</td></tr>';
+    gt.innerHTML = h; gt.style.display = '';
   }
   listInc = inc; billCheck();
   $('lt').style.display = items.length ? '' : 'none';

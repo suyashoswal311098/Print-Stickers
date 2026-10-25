@@ -38,7 +38,8 @@ function pcInclCost_(cost, taxCode) {
 
 // Layout version of the Purchase CSV sheet. Raise it whenever setupPurchaseSheet changes formulas/columns:
 // the LOOSE PURCHASE / DOWNLOAD buttons then repair the sheet by themselves (typed lines are kept).
-const PC_LAYOUT_VERSION_ = '10';   // 10 = Net Unit Cost no longer from NPP (NPP = selling price); 9 = I Margin vs NPP, NPP / MRP J / K, info L–Q; 8 = Net Unit Cost (C) coloured + typing there = Cost override; 4 = Net Unit Cost incl tax; 5 = ADD PURCHASE button picture; 6 = O NPP / P MRP; 7 = NPP / MRP moved to I / J (info columns now K–P)
+const PC_LAYOUT_VERSION_ = '11';   // 11 = GST breakup block S:W
+// (previous:)   // 10 = Net Unit Cost no longer from NPP (NPP = selling price); 9 = I Margin vs NPP, NPP / MRP J / K, info L–Q; 8 = Net Unit Cost (C) coloured + typing there = Cost override; 4 = Net Unit Cost incl tax; 5 = ADD PURCHASE button picture; 6 = O NPP / P MRP; 7 = NPP / MRP moved to I / J (info columns now K–P)
 function pcEnsureLayout_() {
   const props = PropertiesService.getDocumentProperties();
   if (props.getProperty('pc_layout') === PC_LAYOUT_VERSION_) return false;
@@ -128,6 +129,27 @@ function setupPurchaseSheet() {
   // J / K: NPP / MRP from Product List, typed changes are saved back there (onEdit → pcOnEdit_)
   sh.getRange(PC_HEAD_ROW_, PC_NPP_COL_, 1, 2).setBackground('#b45f06');
   sh.getRange(PC_HEAD_ROW_, 3).setBackground('#137333');   // C Net Unit Cost: green (typing there = Cost override, pcOnEdit_)
+  // GST breakup (S:W, rows 1-8): per tax code taxable value, CGST, SGST, total tax - same figures as a supplier bill's tax table.
+  // Taxable = sum of "Total ex tax" (Q) of the lines using the code, tax = sum of "Total incl tax" (L) minus that.
+  if (sh.getMaxColumns() < 23) sh.insertColumnsAfter(sh.getMaxColumns(), 23 - sh.getMaxColumns());
+  const nT = PC_TAX_CODES_.length, tEnd = 3 + nT - 1, totR = tEnd + 1;
+  sh.getRange(1, 19, totR, 5).clearContent();
+  sh.getRange('S1').setValue('GST BREAKUP (info)').setFontWeight('bold');
+  sh.getRange(2, 19, 1, 5).setValues([['Tax code', 'Taxable value', 'CGST', 'SGST', 'Total tax']]).setBackground('#7f7f7f').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  const rg = (c) => '$' + c + '$' + PC_FIRST_ + ':$' + c + '$' + lastRow;
+  for (let i = 0; i < nT; i++) {
+    const r = 3 + i;
+    sh.getRange(r, 19).setNumberFormat('@').setValue(String(PC_TAX_CODES_[i][1]));
+    sh.getRange(r, 20).setFormula('=ROUND(SUMIF(' + rg('O') + ',S' + r + ',' + rg('Q') + '),2)');
+    sh.getRange(r, 23).setFormula('=ROUND(SUMIF(' + rg('O') + ',S' + r + ',' + rg('L') + ')-T' + r + ',2)');
+    sh.getRange(r, 21).setFormula('=ROUND(W' + r + '/2,2)');
+    sh.getRange(r, 22).setFormula('=W' + r + '-U' + r);
+  }
+  sh.getRange(totR, 19).setValue('Total').setFontWeight('bold');
+  ['T', 'U', 'V', 'W'].forEach(c => sh.getRange(c + totR).setFormula('=SUM(' + c + '3:' + c + tEnd + ')').setFontWeight('bold'));
+  sh.getRange(3, 20, totR - 2, 4).setNumberFormat('#,##0.00').setFontColor('#444');
+  sh.getRange(totR + 1, 19).setValue('Total incl tax = Taxable + Total tax (the supplier bill may differ by its round off)').setFontColor('#666').setFontSize(9);
+  sh.setColumnWidths(19, 5, 100);
   sh.setFrozenRows(PC_HEAD_ROW_);
 
   // formats: variant + discount + expiry as plain text ("5%" stays as typed); code/cost come from the formulas
