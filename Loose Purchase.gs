@@ -129,6 +129,13 @@ function lpClear(row, dd) {
   return true;
 }
 
+// "🗑 Clear all lines" in the window (it asks "sure?" first): empties all purchase lines in the sheet.
+function lpClearAll() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
+  if (sh) pcClearAllLines_(sh);
+  return true;
+}
+
 function lpRowCheck_(row, dd) {
   const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PC_SHEET_);
   if (!sh) throw new Error('The Purchase CSV sheet is missing.');

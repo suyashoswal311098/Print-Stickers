@@ -106,6 +106,7 @@
     <label class="radio" title="the supplier bill total incl tax - only a check">Bill total <input type="text" id="bill" class="ed" style="width:95px" placeholder="incl tax"></label><span id="billD"></span>
     <button id="put" disabled>Put in sheet</button>
     <button id="dl" class="sec">⬇ Download both files</button>
+    <button id="clr" class="sec" style="color:#b3261e;border-color:#b3261e" title="Empties the list here AND all purchase lines in the sheet (asks first)">🗑 Clear all lines</button>
     <span id="msg"></span>
     <span id="dlbox"></span>
   </div>
@@ -591,6 +592,24 @@ function loadSheet() {
     .lpReadSheet();
 }
 $('reload').addEventListener('click', loadSheet);
+
+// 🗑 Clear all lines: 1st click asks (button turns red "sure?"), 2nd click within 5 s empties the list and the sheet lines.
+var clrSure = null;
+$('clr').addEventListener('click', function () {
+  var b = $('clr');
+  if (writing || wq.length || items.some(function (x) { return x.q; })) { setMsg('<span class="err">Wait until the writing is finished.</span>'); return; }
+  if (!clrSure) {
+    b.textContent = 'sure? list + sheet'; b.style.background = '#b3261e'; b.style.color = '#fff';
+    clrSure = setTimeout(resetClr, 5000);
+    return;
+  }
+  resetClr(); b.disabled = true; setMsg('Clearing all lines…');
+  google.script.run
+    .withSuccessHandler(function () { b.disabled = false; items = []; editIdx = -1; renderList(); setMsg('<span class="ok">✔ All lines cleared (list and sheet).</span>'); $('q').focus(); })
+    .withFailureHandler(function (e) { b.disabled = false; setMsg('<span class="err">Not cleared: ' + esc(e.message) + '</span>'); })
+    .lpClearAll();
+});
+function resetClr() { clearTimeout(clrSure); clrSure = null; var b = $('clr'); b.textContent = '🗑 Clear all lines'; b.style.background = ''; b.style.color = '#b3261e'; }
 
 // Writes go one after the other (each appends below the last line of the sheet), so fast clicks cannot overlap.
 var wq = [], writing = false;

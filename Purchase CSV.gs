@@ -382,5 +382,11 @@ function pcClearRows() {
   if (!sh) return;
   if (ui.alert('Clear all purchase lines?', 'This empties Product, Quantity, Variant, Tax, Discount, Expiry, Cost override and the NPP / MRP copies on "' + PC_SHEET_ + '" (rows ' + PC_FIRST_ + ' down). The formulas stay.',
     ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
-  [1, 4, 5, 6, 7, 8, PC_COST_COL_, PC_NPP_COL_, PC_MRP_COL_].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());   // I / J only copies: Product List keeps its NPP / MRP
+  pcClearAllLines_(sh);
+}
+
+// Empties every typed purchase cell (formulas, dropdowns and the default tax stay). J / K are only copies: Product List keeps its NPP / MRP.
+function pcClearAllLines_(sh) {
+  [1, 4, 5, 6, 7, 8, PC_COST_COL_, PC_NPP_COL_, PC_MRP_COL_].forEach(c => sh.getRange(PC_FIRST_, c, PC_ROWS_, 1).clearContent());
+  SpreadsheetApp.flush();
 }
