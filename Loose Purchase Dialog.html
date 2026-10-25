@@ -90,12 +90,12 @@
     <div id="errs" style="min-height:44px;max-height:70px;overflow:auto"></div>
     <button id="add" class="go" disabled>＋ Add to list &nbsp;<span style="font-weight:normal;font-size:12px">(Enter)</span></button>
     <div class="bar" style="margin:0"><label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label>
-    <label class="radio" style="margin:0" title="the cost per pack (before tax) is saved as the product's NPP in Product List"><input type="checkbox" id="updNpp" checked> Update NPP from purchase</label></div>
+    <label class="radio" style="margin:0" title="the cost per pack (before tax) is saved as the product's NPP in Product List - leave OFF when NPP is your selling price"><input type="checkbox" id="updNpp"> Update NPP from purchase</label></div>
   </div>
 </div>
 
 <div id="listbox">
-  <div><b style="color:#1f3d66">List for the sheet</b> <span id="cnt" class="muted"></span></div>
+  <div><b style="color:#1f3d66">List for the sheet</b> <span id="cnt" class="muted"></span> <button class="sec mini" id="reload" title="Read the lines that are in the Purchase CSV sheet again (✔ lines = in the sheet; ✎ / ✕ change them there)">↻ from sheet</button></div>
   <div id="listscroll">
     <table id="lt" style="display:none">
       <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Net Unit Cost (incl tax)</th><th>Tax</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th>Expiry</th><th></th></tr></thead>
@@ -107,6 +107,7 @@
     <label class="radio" title="the supplier bill total incl tax - only a check">Bill total <input type="text" id="bill" class="ed" style="width:95px" placeholder="incl tax"></label><span id="billD"></span>
     <button id="put" disabled>Put in sheet</button>
     <button id="dl" class="sec">⬇ Download both files</button>
+    <button id="clr" class="sec" style="color:#b3261e;border-color:#b3261e" title="Empties the list here AND all purchase lines in the sheet (asks first)">🗑 Clear all lines</button>
     <span id="msg"></span>
     <span id="dlbox"></span>
   </div>
@@ -421,14 +422,13 @@ function showChips(errs, warns) {
   h += (warns || []).map(function (m) { return '<span class="chip warn">⚠ ' + esc(m) + '</span>'; }).join('');
   $('errs').innerHTML = h;
 }
-// (3) wrong-rate check: cost per pack (before tax) far from the product's NPP → warning only
-var RATE_WARN_ = 0.30;   // 30 %
+// (3) margin check: NPP is the SELLING price (user, 24 Oct) → warning only when the cost per pack incl tax is not below it
 function priceWarns(list) {
-  var out = [];
+  var out = [], t = TAX[$('tax').value] || 0;
   list.forEach(function (x) {
     var n = Number(x.p.npp); if (!(n > 0) || !(x.ex > 0)) return;
-    var d = (x.ex - n) / n;
-    if (Math.abs(d) > RATE_WARN_) out.push(x.p.name + ': cost ' + f2(x.ex) + ' vs NPP ' + f2(n) + ' (' + (d > 0 ? '+' : '') + Math.round(d * 100) + '%) - check the rate');
+    var c = x.ex * (1 + t / 100);
+    if (c >= n) out.push(x.p.name + ': cost ' + f2(c) + ' (incl tax) is not below NPP ' + f2(n) + ' - no margin, check the rate or NPP');
   });
   return out;
 }
@@ -451,20 +451,20 @@ function nppFromPurchase(ch, lines) {
   });
   return ch;
 }
-// (5) same product, same cost and tax already in the list → add the packs to that line (also in the sheet)
+// (5) same product already in the list (or in the sheet, ✔ line) → that line is UPDATED with the new packs / cost /
+// tax / expiry instead of adding a second line (user, 24 Oct: "if again write, update existing"). Returns the item
+// still to be written as a new line, or null.
 function mergeOrAdd(it) {
-  var same = items.filter(function (x) { return x.dd === it.dd && x.tax === it.tax && Math.abs(x.cost - it.cost) < 1e-6 && !x.q; })[0];
-  if (!same) {
-    if (items.some(function (x) { return x.dd === it.dd; })) setMsg('<span class="err">⚠ ' + esc(it.name) + ' is already in the list at another cost / tax - added as a separate line.</span>');
-    items.push(it); return it;
-  }
-  var total = same.packs + it.packs;
-  if (!same.done) { same.packs = total; setMsg('<span class="ok">+ ' + it.packs + ' packs added to the line already in the list (' + esc(it.name) + ').</span>'); return null; }
+  var same = items.filter(function (x) { return x.dd === it.dd && !x.q; })[0];
+  if (!same) { items.push(it); return it; }
+  var was = same.packs + ' packs @ ' + f2(inclOf(same));
+  var apply = function () { same.packs = it.packs; same.cost = it.cost; same.tax = it.tax; same.t = it.t; same.exp = it.exp; };
+  if (!same.done) { apply(); setMsg('<span class="ok">↻ ' + esc(it.name) + ' was already in the list (' + was + ') - line updated.</span>'); return null; }
   same.q = true;
   google.script.run
-    .withSuccessHandler(function () { same.q = false; same.packs = total; renderList(); setMsg('<span class="ok">+ ' + it.packs + ' packs added to sheet row ' + same.row + ' (' + esc(it.name) + ').</span>'); })
-    .withFailureHandler(function (e) { same.q = false; items.push(it); renderList(); if ($('fast').checked) writeItems([it]); setMsg('<span class="err">Could not add to the existing line (' + esc(e.message) + ') - added as a new line.</span>'); })
-    .lpUpdate(same.row, same.dd, { packs: total, cost: same.cost, tax: same.tax });
+    .withSuccessHandler(function () { same.q = false; apply(); renderList(); setMsg('<span class="ok">↻ ' + esc(it.name) + ': sheet row ' + same.row + ' updated (was ' + was + ').</span>'); })
+    .withFailureHandler(function (e) { same.q = false; renderList(); setMsg('<span class="err">' + esc(it.name) + ': sheet row ' + same.row + ' not updated (' + esc(e.message) + ') - try again or ↻ from sheet.</span>'); })
+    .lpUpdate(same.row, same.dd, { packs: it.packs, cost: it.cost, tax: it.tax, exp: it.exp || '' });
   return null;
 }
 
@@ -523,7 +523,7 @@ function renderList() {
         '<td style="white-space:nowrap"><button class="mini" data-save="' + i + '">✔ Save</button> <button class="sec mini" data-cancel="1">✕</button></td>';
     } else {
       var act = it.q ? '…' : '<button class="sec mini" data-edit="' + i + '" title="Change packs / cost / tax">✎</button> ' +
-        (it.sure ? '<button class="mini" data-del="' + i + '">sure?</button>' : '<button class="sec mini" data-del="' + i + '" title="Remove' + (it.done ? ' (empties its row in the sheet)' : '') + '">✕</button>');
+        (it.sure ? '<button class="mini" data-del="' + i + '">sure?</button>' : '<button class="sec mini" data-del="' + i + '" title="Remove' + (it.done ? ' (also from the sheet; lines below move up)' : '') + '">✕</button>');
       tr.innerHTML = '<td>' + (it.done ? '<span class="ok" title="in the sheet">✔</span> ' : '') + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(ci) + '</td><td>' + esc(it.tax) +
         '</td><td class="n">' + f2(g) + '</td><td class="n">' + f2(e) + '</td><td class="muted">' + esc(it.exp || '') + '</td><td style="white-space:nowrap">' + act + '</td>';
     }
@@ -542,6 +542,7 @@ function renderList() {
   $('put').disabled = !pend;
   $('put').textContent = pend ? 'Put ' + pend + ' line(s) in sheet' : 'Put in sheet';
   if (editIdx >= 0 && $('ePk')) { $('ePk').focus(); $('ePk').select(); }
+  saveDraft();
 }
 
 function saveEdit(i) {
@@ -562,15 +563,89 @@ function saveEdit(i) {
 function delItem(i) {
   var it = items[i]; if (!it || it.q) return;
   if (!it.done) { items.splice(i, 1); editIdx = -1; renderList(); return; }
-  if (!it.sure) { items.forEach(function (x) { x.sure = false; }); it.sure = true; renderList(); return; }
+  if (!it.sure) {   // "sure?" goes back to ✕ after 8 s
+    items.forEach(function (x) { x.sure = false; }); it.sure = true; renderList();
+    clearTimeout(delItem.t); delItem.t = setTimeout(function () { if (it.sure && !it.q) { it.sure = false; renderList(); } }, 8000);
+    return;
+  }
   it.q = true; renderList(); setMsg('Emptying the sheet row…');
   google.script.run
-    .withSuccessHandler(function () { items.splice(items.indexOf(it), 1); renderList(); setMsg('<span class="ok">✔ Removed; its sheet row was emptied.</span>'); })
+    .withSuccessHandler(function () {
+      items.splice(items.indexOf(it), 1);
+      items.forEach(function (x) { if (x.done && x.row > it.row) x.row--; });   // the sheet moved the lines below up one row
+      renderList(); setMsg('<span class="ok">✔ Removed from the sheet (lines below moved up).</span>');
+    })
     .withFailureHandler(function (e) { it.q = false; it.sure = false; renderList(); setMsg('<span class="err">' + esc(e.message) + '</span>'); })
     .lpClear(it.row, it.dd);
 }
 
 function setMsg(html) { $('msg').innerHTML = html; }
+
+// DRAFT: lines not yet in the sheet are kept (this browser at once + the user's Google account a moment later) and
+// come back the next time the window opens, so closing the window / reloading the page does not lose them.
+var draftReady = false, draftTimer = null, restored = null;
+function saveDraft() {
+  if (!draftReady) return;   // not before the old draft was read
+  var lines = items.filter(function (x) { return !x.done; }).map(function (x) { return { dd: x.dd, code: x.code, name: x.name, packs: x.packs, cost: x.cost, tax: x.tax, t: x.t, exp: x.exp || '' }; });
+  var json = lines.length ? JSON.stringify({ ts: Date.now(), lines: lines }) : '';
+  try { if (json) localStorage.setItem('lp_draft', json); else localStorage.removeItem('lp_draft'); } catch (e) {}
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(function () { google.script.run.withFailureHandler(function () {}).lpSaveDraft(json.length > 8500 ? '' : json); }, 1200);
+}
+// newest of the account copy and this browser's copy
+function readDraft(serverJson) {
+  var best = null;
+  [serverJson, (function () { try { return localStorage.getItem('lp_draft'); } catch (e) { return ''; } })()].forEach(function (j) {
+    try { var o = j && JSON.parse(j); if (o && o.lines && o.lines.length && (!best || o.ts > best.ts)) best = o; } catch (e) {}
+  });
+  return best ? best.lines.filter(function (l) { return l && l.dd && l.packs > 0 && l.cost >= 0; }) : [];
+}
+
+// The lines already in the Purchase CSV sheet become ✔ lines of the list (at open and with ↻ from sheet), so they can be
+// changed (✎) or removed (✕) here too. Lines not yet in the sheet stay below them.
+function loadSheet() {
+  if (writing || wq.length || items.some(function (x) { return x.q; })) { setMsg('<span class="err">Wait until the writing is finished, then ↻ again.</span>'); return; }
+  setMsg('Reading the sheet…');
+  google.script.run
+    .withSuccessHandler(function (rows) {
+      var fromSheet = rows.filter(function (r) { return r.packs > 0 && r.cost >= 0; }).map(function (r) {
+        var t = TAX[r.tax] !== undefined ? TAX[r.tax] : 0;
+        var p = P.filter(function (x) { return x.dd === r.dd; })[0];
+        return { dd: r.dd, code: p ? p.code : String(r.dd).split(' ')[0], name: p ? p.name : r.dd, packs: r.packs, cost: round4(r.cost / (1 + t / 100)), tax: r.tax, t: t, exp: r.exp, done: true, q: false, row: r.row };
+      });
+      var skipped = rows.length - fromSheet.length, back = 0;
+      if (restored) {   // lines kept from last time: drop the ones the sheet already has (written just before closing)
+        var inSheet = {}; fromSheet.forEach(function (r) { inSheet[r.dd] = true; });
+        items = items.filter(function (x) { return x.done || !x.restored || !inSheet[x.dd]; });
+        back = items.filter(function (x) { return x.restored; }).length; restored = null;
+      }
+      items = fromSheet.concat(items.filter(function (x) { return !x.done; }));
+      editIdx = -1; draftReady = true; renderList();
+      if (back) { setMsg('<span class="ok">↩ ' + back + ' line(s) from last time that were NOT in the sheet are back in the list - Put in sheet or Download.</span>'); return; }
+      setMsg(fromSheet.length ? '<span class="ok">✔ ' + fromSheet.length + ' line(s) from the sheet' + '.</span>' + (skipped ? ' <span class="err">' + skipped + ' sheet line(s) without packs / cost not shown - fix them in the sheet.</span>' : '') : (skipped ? '<span class="err">' + skipped + ' sheet line(s) without packs / cost - fix them in the sheet.</span>' : ''));
+    })
+    .withFailureHandler(function (e) { draftReady = true; restored = null; renderList(); setMsg('<span class="err">Could not read the sheet: ' + esc(e.message) + '</span>'); })
+    .lpReadSheet();
+}
+$('reload').addEventListener('click', loadSheet);
+
+// 🗑 Clear all lines: 1st click asks (button turns red "sure?"), 2nd click within 8 s empties the list and the sheet lines.
+var clrSure = null;
+$('clr').addEventListener('click', function () {
+  var b = $('clr');
+  if (writing || wq.length || items.some(function (x) { return x.q; })) { setMsg('<span class="err">Wait until the writing is finished.</span>'); return; }
+  if (!clrSure) {
+    b.textContent = 'sure? list + sheet'; b.style.background = '#b3261e'; b.style.color = '#fff';
+    clrSure = setTimeout(resetClr, 8000);
+    return;
+  }
+  resetClr(); b.disabled = true; setMsg('Clearing all lines…');
+  google.script.run
+    .withSuccessHandler(function () { b.disabled = false; items = []; editIdx = -1; renderList(); setMsg('<span class="ok">✔ All lines cleared (list and sheet).</span>'); $('q').focus(); })
+    .withFailureHandler(function (e) { b.disabled = false; setMsg('<span class="err">Not cleared: ' + esc(e.message) + '</span>'); })
+    .lpClearAll();
+});
+function resetClr() { clearTimeout(clrSure); clrSure = null; var b = $('clr'); b.textContent = '🗑 Clear all lines'; b.style.background = ''; b.style.color = '#b3261e'; }
 
 // Writes go one after the other (each appends below the last line of the sheet), so fast clicks cannot overlap.
 var wq = [], writing = false;
@@ -621,12 +696,12 @@ function download() {
     .withSuccessHandler(function (r) {
       $('dl').disabled = false;
       if (r.problems) { setMsg('<span class="err">Fix first:</span> ' + esc(r.problems.slice(0, 8).join(' | '))); return; }
-      if (r.empty) { setMsg('<span class="err">The sheet has no lines yet.</span>'); return; }
+      if (r.empty) { setMsg('<span class="err">The list is empty - add lines first.</span>'); return; }
       setMsg('<span class="ok">✔ ' + r.count + ' line(s), ' + r.products + ' product(s) - downloading ' + r.files.length + ' files…</span>');
       pcSaveFiles(r.files, $('dlbox'));
     })
     .withFailureHandler(function (e) { $('dl').disabled = false; setMsg('<span class="err">' + esc(e.message) + '</span>'); })
-    .lpDownload();
+    .lpDownload(items.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax, exp: it.exp || '' }; }));   // straight from this list (sheet not needed)
 }
 
 // ---------- wiring ----------
@@ -694,8 +769,8 @@ $('lb').addEventListener('keydown', function (e) {
   else if (e.key === 'Escape') { editIdx = -1; renderList(); }
 });
 try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } catch (e) {}
-try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; if (localStorage.getItem('lp_npp') === '0') $('updNpp').checked = false; } catch (e) {}
-$('updNpp').addEventListener('change', function () { try { localStorage.setItem('lp_npp', $('updNpp').checked ? '1' : '0'); } catch (e) {} });
+try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; $('updNpp').checked = localStorage.getItem('lp_npp2') === '1'; } catch (e) {}
+$('updNpp').addEventListener('change', function () { try { localStorage.setItem('lp_npp2', $('updNpp').checked ? '1' : '0'); } catch (e) {} });
 $('bill').addEventListener('input', billCheck);
 $('auto').addEventListener('change', function () { try { localStorage.setItem('lp_auto', $('auto').checked ? '1' : '0'); } catch (e) {} if ($('auto').checked) { manualKg = false; renderVariants(); } });
 $('fast').addEventListener('change', function () { try { localStorage.setItem('lp_fast', $('fast').checked ? '1' : '0'); } catch (e) {} });
@@ -739,7 +814,13 @@ function computeEqual() {
   var sel = cands.filter(function (p) { return useSz[p.code] !== false; });
   if (!sel.length) return 'Tick at least one size.';
   var share = qG / sel.length;
-  var pk = exactSplit(qG, sel.map(function (p) { return p.g; }));   // exact, as near to equal as possible
+  // 1st choice (user, 24 Oct): every size gets WHOLE kg (10 kg in 3 sizes → 3 + 3 + 4, not 3.4 + 3.3 + 3.3).
+  // Each size moves in steps of lcm(pack, 1000 g) (200 g → 1 kg = 5 packs, 300 g → 3 kg), then packs = steps × packs per step.
+  var gcd = function (a, b) { return b ? gcd(b, a % b) : a; };
+  var step = sel.map(function (p) { var g = Math.round(p.g); return g > 0 ? g / gcd(g, 1000) * 1000 : 0; });
+  var pk = step.every(function (x) { return x > 0; }) ? exactSplit(qG, step) : null;
+  if (pk) pk = pk.map(function (c, i) { return Math.round(c * step[i] / sel[i].g); });
+  else pk = exactSplit(qG, sel.map(function (p) { return p.g; }));   // no whole-kg way: exact, as near to equal as possible (may give 7.5 kg)
   if (pk) { var m = {}; sel.forEach(function (p, i) { m[p.code] = pk[i]; }); pk = m; }
   else {   // no exact way (e.g. 15.1 kg in 200 g / 500 g packs): old way, the small rest stays as "kg left"
     pk = {}; var used = 0;
@@ -839,6 +920,9 @@ function init(d) {
   loaded = true;
   var sm = 'loose'; try { sm = localStorage.getItem('lp_mode') || 'loose'; } catch (e) {}
   setMode(sm);
+  restored = readDraft(d.draft);
+  items = restored.map(function (l) { return { dd: l.dd, code: l.code, name: l.name, packs: l.packs, cost: l.cost, tax: l.tax, t: TAX[l.tax] !== undefined ? TAX[l.tax] : (l.t || 0), exp: l.exp, done: false, q: false, restored: true }; });
+  loadSheet();
 }
 if (window.google && google.script) {
   google.script.run.withSuccessHandler(init).withFailureHandler(function (e) { $('hint').innerHTML = '<span class="err">' + esc(e.message) + '</span>'; }).lpGetData();
