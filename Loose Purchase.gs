@@ -80,8 +80,23 @@ function lpWrite(lines) {
   return { first: first, last: last };
 }
 
-// "Download" button of the window: same checks + the same two files as the DOWNLOAD XLSX FILE button.
-function lpDownload() { return pcBuildFiles(); }
+// "Download both files" in the window (user, 25 Oct: straight from the window list, no need to put it in the sheet first).
+// lines = the window list [{dd, packs, cost (ex tax), tax, exp}]; none → the sheet's lines (as the DOWNLOAD XLSX FILE button).
+function lpDownload(lines) {
+  if (!lines || !lines.length) return pcBuildFiles();
+  const look = pcIndex_(), taxOk = pcTaxCodes_(), problems = [], rows = [];
+  lines.forEach((l, i) => {
+    const p = look(l.dd), bad = [];
+    if (!p) bad.push('product not found in Product List');
+    if (!(l.packs > 0)) bad.push('packs must be above 0');
+    if (!(l.cost >= 0)) bad.push('no cost');
+    if (l.tax && taxOk.indexOf(l.tax) < 0) bad.push('tax code "' + l.tax + '" is not a POS code');
+    if (bad.length) { problems.push('Line ' + (i + 1) + ' (' + l.dd + '): ' + bad.join('; ')); return; }
+    rows.push({ code: p.code, cost: pcInclCost_(l.cost, l.tax), qty: l.packs, variant: '', tax: l.tax || '', disc: '', exp: /^\d{2}\/\d{2}\/\d{4}$/.test(String(l.exp || '')) ? l.exp : '' });
+  });
+  if (problems.length) return { problems: problems };
+  return pcFilesFromRows_(rows);
+}
 
 // ✎ in the window, or the same product added again: change packs / cost / tax (/ expiry) of a line already in the sheet (row must still hold the same product).
 function lpUpdate(row, dd, v) {

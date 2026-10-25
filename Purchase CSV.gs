@@ -322,6 +322,12 @@ function pcBuildFiles() {
   const res = pcCollect_();
   if (res.problems.length) return { problems: res.problems };
   if (!res.rows.length) return { empty: true };
+  return pcFilesFromRows_(res.rows);
+}
+
+// Both files from purchase rows [{code, cost (incl tax), qty, variant, tax, disc, exp}] (from the sheet or the window list).
+function pcFilesFromRows_(rows) {
+  const res = { rows: rows };
   const list = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Product List');
   const n = Math.max(list.getLastRow() - 1, 1);
   const bn = list.getRange(2, 2, n, 2).getDisplayValues();

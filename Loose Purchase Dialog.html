@@ -660,12 +660,12 @@ function download() {
     .withSuccessHandler(function (r) {
       $('dl').disabled = false;
       if (r.problems) { setMsg('<span class="err">Fix first:</span> ' + esc(r.problems.slice(0, 8).join(' | '))); return; }
-      if (r.empty) { setMsg('<span class="err">The sheet has no lines yet.</span>'); return; }
+      if (r.empty) { setMsg('<span class="err">The list is empty - add lines first.</span>'); return; }
       setMsg('<span class="ok">✔ ' + r.count + ' line(s), ' + r.products + ' product(s) - downloading ' + r.files.length + ' files…</span>');
       pcSaveFiles(r.files, $('dlbox'));
     })
     .withFailureHandler(function (e) { $('dl').disabled = false; setMsg('<span class="err">' + esc(e.message) + '</span>'); })
-    .lpDownload();
+    .lpDownload(items.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax, exp: it.exp || '' }; }));   // straight from this list (sheet not needed)
 }
 
 // ---------- wiring ----------
