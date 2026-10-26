@@ -4,118 +4,159 @@
 <base target="_top">
 <meta charset="utf-8">
 <style>
+  /* Apple-like look: light grey page, white cards, soft shadows, pill buttons, filled inputs */
+  :root { --bg: #f5f5f7; --card: #fff; --line: #e5e5ea; --line2: #f0f0f3; --text: #1d1d1f; --sub: #6e6e73; --sub2: #86868b;
+          --blue: #0071e3; --blueBg: #e8f1fc; --green: #34c759; --greenT: #248a3d; --red: #ff3b30; --redT: #d70015; --amberT: #b25000; --fill: #f2f2f7;
+          --shadow: 0 1px 2px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.05); }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
-  body { font-family: Arial, sans-serif; font-size: 13px; margin: 0; padding: 8px 10px; color: #202124; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
-  label { display: flex; flex-direction: column; font-weight: bold; font-size: 11px; gap: 2px; color: #444; }
-  input[type=text], select { font-size: 14px; padding: 5px 7px; border: 1px solid #aaa; border-radius: 4px; }
-  input:focus, select:focus { outline: 2px solid #4a86c8; }
-  #top { display: flex; gap: 4px; align-items: flex-end; flex-wrap: wrap; background: #f1f5fb; border: 1px solid #c8d3e3; border-radius: 8px; padding: 8px; }
-  #q { width: 128px; } #qty { width: 54px; } #rate { width: 58px; } #unit { width: 78px; } #tax { width: 88px; }
-  .xg { display: flex; flex-direction: column; gap: 2px; } .xl { font-size: 11px; font-weight: bold; color: #444; }
-  .xr { display: flex; } .xr input, .xr select { border-radius: 0; margin-left: -1px; } .xr input { width: 40px; border-radius: 4px 0 0 4px; margin-left: 0; } .xr select:last-child { border-radius: 0 4px 4px 0; width: 94px; } .xr select { padding: 5px 1px; font-size: 13px; } #apmcK { width: 46px; }
-  .seg { display: flex; } .seg label { flex-direction: row; font-size: 12px; font-weight: bold; margin: 0; padding: 6px 5px; border: 1px solid #1f3d66; color: #1f3d66; cursor: pointer; background: #fff; }
-  .seg label:first-child { border-radius: 4px 0 0 4px; } .seg label:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
-  .seg input { position: absolute; opacity: 0; width: 0; height: 0; } .seg label { position: relative; } .seg label.on { background: #1f3d66; color: #fff; }
+  body { font: 13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; padding: 10px 12px;
+         color: var(--text); background: var(--bg); display: flex; flex-direction: column; gap: 10px; overflow: hidden; -webkit-font-smoothing: antialiased; }
+  label { display: flex; flex-direction: column; font-weight: 600; font-size: 11px; gap: 3px; color: var(--sub); }
+  .cap { font-size: 11px; font-weight: 600; color: var(--sub); margin-bottom: 3px; }
+  input[type=text], select { font: inherit; font-size: 14px; padding: 6px 8px; border: 1px solid transparent; background: var(--fill); border-radius: 8px; color: var(--text);
+         transition: background .15s, box-shadow .15s, border-color .15s; }
+  select { -webkit-appearance: none; appearance: none; padding-right: 20px; cursor: pointer;
+         background: var(--fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236e6e73' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 7px center; }
+  input::placeholder { color: #a1a1a6; }
+  input:focus, select:focus { outline: none; background-color: #fff; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(0,113,227,.18); }
+  input[type=checkbox] { accent-color: var(--blue); width: 15px; height: 15px; margin: 0; cursor: pointer; }
+  .card { background: var(--card); border-radius: 14px; box-shadow: var(--shadow); }
+  #top { display: flex; gap: 6px; align-items: flex-end; padding: 9px 10px; }
+  #q { width: 150px; } #qty { width: 58px; } #rate { width: 72px; } #unit { width: 82px; } #tax { width: 92px; }
+  .xg { display: flex; flex-direction: column; }
+  .xr { display: flex; background: var(--fill); border-radius: 8px; }
+  .xr input, .xr select { border-radius: 8px; background-color: transparent; } .xr input { width: 40px; } .xr select { padding: 6px 16px 6px 4px; font-size: 13px; background-position: right 4px center; }
+  #apmcK { width: 40px; } #apmcW { width: 88px; }
+  .seg { display: flex; background: #e8e8ed; border-radius: 9px; padding: 2px; }
+  .seg label { flex-direction: row; font-size: 12px; font-weight: 600; color: var(--text); padding: 6px 8px; border-radius: 7px; cursor: pointer; position: relative; white-space: nowrap;
+         transition: background .2s, box-shadow .2s, color .2s; }
+  .seg label:hover { color: var(--blue); }
+  .seg label.on { background: #fff; color: var(--blue); box-shadow: 0 1px 3px rgba(0,0,0,.14), 0 0 0 .5px rgba(0,0,0,.04); }
+  .seg input { position: absolute; opacity: 0; width: 0; height: 0; }
   #main { display: flex; gap: 10px; min-height: 0; flex: none; height: 330px; }
-  #left { flex: 1 1 58%; min-width: 0; overflow: auto; border: 1px solid #dadce0; border-radius: 8px; padding: 6px 8px; }
-  #right { flex: 1 1 42%; min-width: 270px; display: flex; flex-direction: column; gap: 6px; }
-  #listbox { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; border: 1px solid #dadce0; border-radius: 8px; padding: 6px 8px; }
-  #listscroll { flex: 1; overflow: auto; min-height: 0; }
-  table { border-collapse: collapse; width: 100%; }
-  th { background: #4a86c8; color: #fff; padding: 3px 6px; text-align: left; font-size: 11px; }
-  td { border-bottom: 1px solid #e3e3e3; padding: 2px 6px; }
-  td.n, th.n { text-align: right; }
-  .kg { width: 80px; text-align: right; padding: 3px 6px; font-size: 13px; }
-  .pr { width: 62px; text-align: right; padding: 3px 4px; font-size: 12px; border: 1px dashed #aab; }
-  .pr.chg { background: #fff3c4; border: 1px solid #e0a800; }
-  .ed { width: 70px; text-align: right; padding: 2px 4px; font-size: 13px; }
-  .muted { color: #777; font-size: 12px; }
-  .err { color: #c00; font-weight: bold; }
-  .ok { color: #1e8e3e; font-weight: bold; }
-  .calc { background: #fff8e1; border: 1px solid #f0d98a; border-radius: 6px; padding: 6px 9px; line-height: 1.5; flex: 1; overflow: auto; }
-  button { font-size: 13px; padding: 6px 12px; border: 1px solid #1f3d66; background: #1f3d66; color: #fff; border-radius: 4px; cursor: pointer; }
-  button.sec { background: #fff; color: #1f3d66; }
-  button.mini { padding: 1px 7px; font-size: 12px; }
-  button:disabled { opacity: .45; cursor: default; }
-  button.big { font-size: 15px; padding: 9px 14px; }
-  .radio { flex-direction: row; align-items: center; gap: 4px; font-weight: normal; font-size: 12px; }
-  .grp { display: block; width: 100%; text-align: left; background: #fff; color: #202124; border: 1px solid #c8d3e3; margin-bottom: 3px; padding: 4px 9px; }
-  .grp.sel { background: #e8f0fe; border-color: #1f3d66; font-weight: bold; }
-  tr.psel td { background: #e8f0fe; font-weight: bold; }
+  #left { flex: 1 1 58%; min-width: 0; overflow: auto; padding: 8px 10px; }
+  #right { flex: 1 1 42%; min-width: 270px; display: flex; flex-direction: column; gap: 8px; }
+  #listbox { flex: 1 1 auto; min-height: 90px; display: flex; flex-direction: column; padding: 10px 12px 8px; }
+  #listscroll { flex: 1; overflow: auto; min-height: 0; margin: 4px -4px 0; padding: 0 4px; }
+  table { border-collapse: separate; border-spacing: 0; width: 100%; }
+  th { color: var(--sub); font-weight: 600; font-size: 11px; padding: 5px 6px; text-align: left; border-bottom: 1px solid var(--line); background: #fff; white-space: nowrap; }
+  #lt th { position: sticky; top: 0; z-index: 1; }
+  td { border-bottom: 1px solid var(--line2); padding: 5px 6px; vertical-align: middle; }
+  tbody tr { transition: background .12s; } tbody tr:hover td { background: #fafafc; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .kg { width: 62px; text-align: right; padding: 4px 7px; font-size: 13px; }
+  .pr, .lpr { width: 60px; text-align: right; padding: 4px 6px; font-size: 12px; border-radius: 6px; }
+  .pr.chg, .lpr.chg { background: #fff4e0; border-color: #ff9f0a; }
+  .lpr.bad { background: #fff0f0; border-color: var(--red); }
+  .ed { width: 72px; text-align: right; padding: 4px 6px; font-size: 13px; }
+  .muted { color: var(--sub2); font-size: 12px; }
+  .sub { color: var(--sub2); font-size: 11px; margin-top: 1px; }
+  .ell { max-width: 112px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .err { color: var(--redT); font-weight: 600; }
+  .ok { color: var(--greenT); font-weight: 600; }
+  .mg { font-weight: 600; font-variant-numeric: tabular-nums; } .mg.pos { color: var(--greenT); } .mg.neg { color: var(--redT); }
+  .mgp { display: block; font-size: 11px; color: var(--sub2); font-weight: 400; }
+  .calc { padding: 10px 12px; line-height: 1.5; flex: 1; overflow: auto; }
+  .calc.muted { display: flex; align-items: center; justify-content: center; text-align: center; color: var(--sub2); }
+  button { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border: 0; background: var(--blue); color: #fff; border-radius: 980px; cursor: pointer;
+         transition: background .15s, opacity .15s, transform .08s; white-space: nowrap; }
+  button:hover { background: #0077ed; } button:active { transform: scale(.97); }
+  button.sec { background: #e8e8ed; color: var(--text); } button.sec:hover { background: #dcdce1; }
+  button.danger { background: #fff0f0; color: var(--redT); } button.danger:hover { background: #ffe0e0; }
+  button.mini { padding: 3px 10px; font-size: 12px; }
+  button.icon { padding: 3px 8px; font-size: 12px; background: transparent; color: var(--sub); } button.icon:hover { background: #ebebf0; color: var(--text); }
+  button:disabled { opacity: .4; cursor: default; transform: none; }
+  button.go { background: var(--green); font-size: 16px; padding: 12px 14px; width: 100%; border-radius: 12px; box-shadow: 0 2px 8px rgba(52,199,89,.35); }
+  button.go:hover { background: #30b350; }
+  button.go:disabled { background: #d1d1d6; box-shadow: none; opacity: 1; color: #fff; }
+  .radio { flex-direction: row; align-items: center; gap: 6px; font-weight: 500; font-size: 12px; color: var(--sub); cursor: pointer; }
+  .grp { display: block; width: 100%; text-align: left; background: var(--fill); color: var(--text); margin-bottom: 4px; padding: 7px 11px; border-radius: 10px; font-weight: 500; }
+  .grp:hover { background: #e8e8ed; } .grp.sel { background: var(--blueBg); color: var(--blue); box-shadow: inset 0 0 0 1.5px var(--blue); font-weight: 600; }
+  tr.psel td { background: var(--blueBg) !important; font-weight: 600; }
   #pb tr { cursor: pointer; }
-  .tot td { font-weight: bold; border-top: 2px solid #999; }
-  .editing td { background: #fff8e1; }
-  .ct { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .ct th { background: #f0d98a; color: #5a4300; font-size: 11px; padding: 3px 6px; }
-  .ct td { border-bottom: 1px solid #f0e2b0; padding: 3px 6px; }
-  .ct tr.cq td { border-bottom: 2px solid #e0c060; font-weight: bold; }
-  .chip { display: inline-block; background: #fdecea; color: #b3261e; border: 1px solid #f3b8b3; border-radius: 12px; padding: 1px 9px; margin: 0 4px 4px 0; font-size: 12px; font-weight: normal; }
-  .chip.warn { background: #fff4d6; color: #8a5a00; border-color: #f0cf7a; }
-  .chip.good { background: #e6f4ea; color: #1e7e34; border-color: #a8d5b5; }
-  button.go { background: #1e7e34; border-color: #145a25; font-size: 17px; font-weight: bold; padding: 12px 14px; width: 100%; }
-  button.go:disabled { background: #9aa5b1; border-color: #9aa5b1; }
-  .bar { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
+  .tot td { font-weight: 700; border-top: 1px solid #d2d2d7; border-bottom: 0; background: #fafafa; }
+  .editing td { background: #fffbea !important; }
+  .ct { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  .ct th { font-size: 11px; padding: 4px 6px; }
+  .ct td { padding: 5px 6px; }
+  .ct tr.cq td { font-weight: 600; background: var(--bg); }
+  .chip { display: inline-block; background: #fff0f0; color: var(--redT); border-radius: 980px; padding: 3px 10px; margin: 0 4px 4px 0; font-size: 12px; font-weight: 500; }
+  .chip.warn { background: #fff6e5; color: var(--amberT); }
+  .chip.good { background: #eafaf0; color: var(--greenT); }
+  .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .head { display: flex; align-items: center; gap: 8px; }
+  .title { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+  .tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: #eafaf0; color: var(--greenT); vertical-align: 1px; }
+  .tag.wait { background: #fff6e5; color: var(--amberT); }
+  #gst { margin-top: 10px; } #gst th { background: transparent; }
+  #msg { position: fixed; left: 50%; bottom: 64px; transform: translate(-50%, 8px); background: rgba(29,29,31,.92); color: #fff; padding: 9px 16px; border-radius: 12px;
+         font-size: 13px; box-shadow: 0 8px 28px rgba(0,0,0,.22); opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; max-width: 86%; z-index: 50; }
+  #msg.show { opacity: 1; transform: translate(-50%, 0); }
+  #msg .ok { color: #30d158; } #msg .err { color: #ff6961; } #msg .chip { margin: 0; }
+  #dlbox a { color: var(--blue); font-size: 12px; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: #d1d1d6; border-radius: 8px; } ::-webkit-scrollbar-track { background: transparent; }
 </style>
 </head>
 <body>
 
-<div id="top">
-  <div><div class="muted" style="font-size:11px;font-weight:bold;color:#444">Buying</div>
-    <div class="seg" id="mseg"><label id="mLoose" title="bought by weight, split into pack sizes"><input type="radio" name="mode" value="loose">LOOSE kg</label><label id="mPacked" title="ready packs: scan the barcode or type the name"><input type="radio" name="mode" value="packed">PACKED pcs</label></div></div>
-  <label><span id="qL">Product (name, no size)</span> <input type="text" id="q" placeholder="premium jumbo walnut" autocomplete="off"></label>
+<div id="top" class="card">
+  <div><div class="cap">Buying</div>
+    <div class="seg" id="mseg"><label id="mLoose" title="bought by weight, split into pack sizes"><input type="radio" name="mode" value="loose">Loose kg</label><label id="mPacked" title="ready packs: scan the barcode or type the name"><input type="radio" name="mode" value="packed">Packed pcs</label></div></div>
+  <label><span id="qL">Product (name, no size)</span> <input type="text" id="q" placeholder="jumbo walnut" autocomplete="off"></label>
   <label><span id="qtyL">Quantity</span> <input type="text" id="qty" placeholder="10kg" autocomplete="off"></label>
   <label><span id="rateL">Rate</span> <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
   <label id="unitL">Rate is <select id="unit"><option value="kg">per kg</option><option value="all">whole qty</option></select></label>
   <label>Tax code <select id="tax"></select></label>
   <div class="xg" title="Extra charge the supplier adds (APMC / market fee, freight, packing…): a % of the rate, or rupees for this whole entry. BEFORE tax = GST is charged on it too (APMC). AFTER tax = added on top of the GST.">
-    <div class="xl">Extra charge</div>
+    <div class="cap">Extra charge</div>
     <div class="xr"><input type="text" id="apmc" placeholder="0" autocomplete="off"><select id="apmcK" title="% of the rate, or ₹ amount for this whole entry"><option value="pct">%</option><option value="amt">₹</option></select><select id="apmcW"><option value="before">before tax</option><option value="after">after tax</option></select></div>
   </div>
-  <div><div class="muted" style="font-size:11px;font-weight:bold;color:#444">Rate…</div>
-    <div class="seg" id="seg"><label id="sIncl"><input type="radio" name="inc" value="incl">INCLUDES tax</label><label id="sExcl"><input type="radio" name="inc" value="excl">EXCLUDES tax</label></div></div>
+  <div><div class="cap">Rate…</div>
+    <div class="seg" id="seg"><label id="sIncl"><input type="radio" name="inc" value="incl">incl. tax</label><label id="sExcl"><input type="radio" name="inc" value="excl">excl. tax</label></div></div>
 </div>
 
 <div id="main">
-  <div id="left">
-    <div class="bar" id="lefttop" style="margin:0 0 4px;position:sticky;top:-6px;background:#fff;z-index:3;padding:2px 0"><button id="eq" class="sec" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><label class="radio" id="autoL" style="display:none" title="split equally by itself when the quantity / ticks change; typing a kg yourself stops it for this product"><input type="checkbox" id="auto"> Auto split</label><span id="rem"></span></div>
+  <div id="left" class="card">
+    <div class="bar" id="lefttop" style="margin:0 0 4px;position:sticky;top:-8px;background:#fff;z-index:3;padding:2px 0"><button id="eq" class="sec mini" style="display:none" title="Share the quantity equally (by weight) between the ticked sizes, whole packs only">⚖ Split equal</button><label class="radio" id="autoL" style="display:none" title="split equally by itself when the quantity / ticks change; typing a kg yourself stops it for this product"><input type="checkbox" id="auto"> Auto split</label><span id="rem"></span></div>
     <div id="hint" class="muted">Loading products…</div>
-    <div id="groups" style="margin:4px 0"></div>
+    <div id="groups" style="margin:6px 0"></div>
     <table id="pt" style="display:none">
-      <thead><tr><th>Barcode</th><th>Product</th><th class="n" title="change or fill in - saved in Product List when you Add to list">NPP ✎</th><th class="n" title="change or fill in - saved in Product List when you Add to list">MRP ✎</th><th></th></tr></thead>
+      <thead><tr><th>Barcode</th><th>Product</th><th class="n" title="change or fill in - saved in Product List when you Add to list (or Download)">NPP ✎</th><th class="n" title="change or fill in - saved in Product List when you Add to list (or Download)">MRP ✎</th><th class="n" title="NPP − cost per pack incl tax">Margin</th><th></th></tr></thead>
       <tbody id="pb"></tbody>
     </table>
     <table id="vt" style="display:none">
-      <thead><tr><th title="tick = included in Split equal"></th><th>Size</th><th>Product</th><th class="n" title="change or fill in - saved in Product List when you Add to list">NPP ✎</th><th class="n" title="change or fill in - saved in Product List when you Add to list">MRP ✎</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
+      <thead><tr><th title="tick = included in Split equal"></th><th>Size</th><th class="n" title="change or fill in - saved in Product List when you Add to list (or Download)">NPP ✎</th><th class="n" title="change or fill in - saved in Product List when you Add to list (or Download)">MRP ✎</th><th class="n" title="NPP − cost per pack incl tax">Margin</th><th class="n">kg</th><th class="n">Packs</th><th></th></tr></thead>
       <tbody id="vb"></tbody>
     </table>
   </div>
   <div id="right">
-    <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
-    <div id="errs" style="min-height:44px;max-height:70px;overflow:auto"></div>
-    <button id="add" class="go" disabled>＋ Add to list &nbsp;<span style="font-weight:normal;font-size:12px">(Enter)</span></button>
-    <div class="bar" style="margin:0"><label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label></div>
+    <div id="calc" class="calc card muted">Type the rate, choose incl. / excl. tax and the tax code.</div>
+    <div id="errs" style="min-height:30px;max-height:62px;overflow:auto"></div>
+    <button id="add" class="go" disabled>＋ Add to list &nbsp;<span style="font-weight:500;font-size:12px;opacity:.85">Enter ↵</span></button>
+    <div class="bar"><label class="radio"><input type="checkbox" id="fast" checked> Put in the sheet at once</label></div>
   </div>
 </div>
 
-<div id="listbox">
-  <div><b style="color:#1f3d66">List for the sheet</b> <span id="cnt" class="muted"></span> <button class="sec mini" id="reload" title="Read the lines that are in the Purchase CSV sheet again (✔ lines = in the sheet; ✎ / ✕ change them there)">↻ from sheet</button></div>
+<div id="listbox" class="card">
+  <div class="head"><span class="title">List for the sheet</span> <span id="cnt" class="muted"></span> <button class="sec mini" id="reload" title="Read the lines that are in the Purchase CSV sheet again (lines marked “in sheet” are there; ✎ / ✕ change them there)">↻ From sheet</button></div>
   <div id="listscroll">
     <table id="lt" style="display:none">
-      <thead><tr><th>Product (as in sheet)</th><th class="n">Packs</th><th class="n">Net Unit Cost (incl tax)</th><th>Tax</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th>Expiry</th><th></th></tr></thead>
+      <thead><tr><th>Product</th><th class="n">Packs</th><th class="n" title="Net Unit Cost per pack INCLUDING tax">Cost / pack</th><th>Tax</th><th class="n" title="selling price - type a new one, saved in Product List">NPP ✎</th><th class="n" title="type a new one, saved in Product List">MRP ✎</th><th class="n" title="NPP − cost per pack incl tax (and % of NPP)">Margin</th><th class="n">Total incl tax</th><th class="n">Total ex tax</th><th></th></tr></thead>
       <tbody id="lb"></tbody>
     </table>
-    <table id="gst" style="display:none;margin-top:4px" title="Like the supplier bill's tax table: taxable value, CGST, SGST per tax code"></table>
-    <div id="lempty" class="muted">Nothing yet. Fill the top row, give the kg per size, then “Add to list” (or press Enter).</div>
+    <table id="gst" style="display:none" title="Like the supplier bill's tax table: taxable value, CGST, SGST per tax code"></table>
+    <div id="lempty" class="muted" style="padding:14px 2px">Nothing yet. Fill the top row, give the kg per size, then “Add to list” (or press Enter).</div>
   </div>
-  <div class="bar">
-    <label class="radio" title="the supplier bill total incl tax - only a check">Bill total <input type="text" id="bill" class="ed" style="width:95px" placeholder="incl tax"></label><span id="billD"></span>
-    <button id="put" disabled>Put in sheet</button>
-    <button id="dl" class="sec">⬇ Download both files</button>
-    <button id="clr" class="sec" style="color:#b3261e;border-color:#b3261e" title="Empties the list here AND all purchase lines in the sheet (asks first)">🗑 Clear all lines</button>
-    <span id="msg"></span>
+  <div class="bar" style="margin-top:8px">
+    <label class="radio" title="the supplier bill total incl tax - only a check">Bill total <input type="text" id="bill" class="ed" style="width:100px" placeholder="incl tax"></label><span id="billD"></span>
+    <span style="flex:1"></span>
     <span id="dlbox"></span>
+    <button id="clr" class="danger" title="Empties the list here AND all purchase lines in the sheet (asks first)">Clear all</button>
+    <button id="put" class="sec" disabled>Put in sheet</button>
+    <button id="dl">⬇ Download both files</button>
   </div>
+  <span id="msg"></span>
 </div>
 
 <script>
@@ -164,7 +205,7 @@ function rateMath(rate, perKg, incl, taxPct, qtyKg, extra) {
 }
 // ---------- end pure helpers ----------
 
-var useSz = {}, P = [], TAX = {}, defTax = '', loaded = false;
+var useSz = {}, P = [], PBY = {}, TAX = {}, defTax = '', loaded = false;
 var cands = [], noSize = 0, kgs = {}, items = [];
 var $ = function (id) { return document.getElementById(id); };
 
@@ -229,7 +270,7 @@ function renderPacked() {
   pres.forEach(function (p) {
     var tr = document.createElement('tr'); tr.setAttribute('data-pick', p.code);
     if (p === psel) tr.className = 'psel';
-    tr.innerHTML = '<td style="white-space:nowrap">' + esc(p.code) + '</td><td>' + esc(p.name) + '</td>' + priceCell(p, 'npp') + priceCell(p, 'mrp') +
+    tr.innerHTML = '<td style="white-space:nowrap">' + esc(p.code) + '</td><td>' + esc(p.name) + '</td>' + priceCell(p, 'npp') + priceCell(p, 'mrp') + '<td class="n" data-mg="' + esc(p.code) + '"></td>' +
       '<td>' + (p === psel ? '<span class="ok">✔</span>' : '<button class="sec mini" data-pick="' + esc(p.code) + '">pick</button>') + '</td>';
     pb.appendChild(tr);
   });
@@ -260,6 +301,7 @@ function recalcPacked() {
     calc.className = 'calc muted';
     calc.textContent = 'Type the rate per pack, choose including / excluding tax and the tax code.';
   }
+  pres.forEach(function (p) { setMargin(p.code, ok && p === psel ? round4(ex * (1 + t / 100)) : NaN); });
   showChips(errs, ok && psel && packs > 0 ? priceWarns([{ p: psel, ex: ex }]) : []);
   $('add').disabled = errs.length > 0 || !ok;
   return (errs.length || !ok) ? null : { p: psel, packs: packs, ex: ex, tax: taxCode, t: t };
@@ -312,7 +354,7 @@ function renderVariants() {
   $('eq').style.display = cands.length > 1 ? '' : 'none';
   cands.forEach(function (p) {
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td><input type="checkbox" data-use="' + esc(p.code) + '"' + (useSz[p.code] === false ? '' : ' checked') + '></td><td style="white-space:nowrap"><b>' + esc(sizeLabel(p.g)) + '</b></td><td>' + esc(p.name) + '</td>' + priceCell(p, 'npp') + priceCell(p, 'mrp') +
+    tr.innerHTML = '<td><input type="checkbox" data-use="' + esc(p.code) + '"' + (useSz[p.code] === false ? '' : ' checked') + '></td><td style="white-space:nowrap"><b>' + esc(sizeLabel(p.g)) + '</b><div class="sub ell" title="' + esc(p.name) + '">' + esc(p.name) + '</div></td>' + priceCell(p, 'npp') + priceCell(p, 'mrp') + '<td class="n" data-mg="' + esc(p.code) + '"></td>' +
       '<td class="n"><input type="text" class="kg" data-c="' + esc(p.code) + '" value="' + esc(kgs[p.code] || '') + '" placeholder="kg"' +
       (cands.length === 1 ? ' readonly title="only one size: the whole quantity goes here by itself" style="background:#eef6ee"' : '') + '></td>' +
       '<td class="n" data-pk="' + esc(p.code) + '"></td><td>' + (cands.length === 1 ? '<span class="muted" style="font-size:11px">auto</span>' : '<button class="sec mini" data-fill="' + esc(p.code) + '" title="Put all the remaining kg here">rest ↵</button>') + '</td>';
@@ -390,6 +432,7 @@ function recalc() {
     calc.className = 'calc muted';
     calc.textContent = 'Type the rate, choose including / excluding tax and the tax code.';
   }
+  cands.forEach(function (p) { setMargin(p.code, math ? round4(math.inclKg * p.g / 1000) : NaN); });
   showChips(errs, math ? priceWarns(rows.map(function (r) { return { p: r.p, ex: math.exKg * r.p.g / 1000 }; })) : []);
   $('add').disabled = errs.length > 0 || !math;
   return (errs.length || !math) ? null : { rows: rows, math: math, tax: taxCode, t: TAX[taxCode] };
@@ -404,6 +447,15 @@ function priceCell(p, f) {
   return '<td class="n"><input type="text" class="pr' + (chg ? ' chg' : '') + '" data-pr="' + f + '" data-pc="' + esc(p.code) + '" value="' + esc(v) + '" placeholder="' + f.toUpperCase() + '"></td>';
 }
 function pnum(v) { v = String(v).replace(/,/g, '').trim(); return v !== '' && isFinite(v) && Number(v) >= 0 ? Number(v) : null; }
+// NPP to use for the margin: the one typed in a box (not saved yet) or the Product List one
+function nppNow(p) { var t = prices[p.code] && prices[p.code].npp !== undefined ? pnum(prices[p.code].npp) : null; return t !== null ? t : (p.npp === '' ? NaN : Number(p.npp)); }
+// Margin = NPP − cost per pack incl tax, and % of NPP (same as the sheet's "Margin vs NPP")
+function marginHtml(npp, costIncl) {
+  if (!(npp > 0) || !(costIncl >= 0)) return '<span class="muted">–</span>';
+  var m = npp - costIncl;
+  return '<span class="mg ' + (m >= 0 ? 'pos' : 'neg') + '">' + f2(m) + '<span class="mgp">' + (Math.round(m / npp * 1000) / 10) + '%</span></span>';
+}
+function setMargin(code, costIncl) { var c = document.querySelector('[data-mg="' + CSS.escape(code) + '"]'); if (c) c.innerHTML = PBY[code] ? marginHtml(nppNow(PBY[code]), costIncl) : ''; }
 // changed NPP / MRP of the products on screen → [{code, npp?, mrp?}] (blank or same value = no change)
 function priceChanges() {
   var out = [];
@@ -419,14 +471,20 @@ function priceChanges() {
   });
   return out;
 }
+// Saves run in the background; priceBusy counts the ones still on the way so Download can wait for them.
+// A failed save is kept in priceFailed and sent again with the next Download.
+var priceBusy = 0, priceWait = [], priceFailed = [];
 function savePrices(ch) {
   if (!ch.length) return;
   ch.forEach(function (c) { P.forEach(function (p) { if (p.code === c.code) { if (c.npp !== undefined) p.npp = c.npp; if (c.mrp !== undefined) p.mrp = c.mrp; } }); delete prices[c.code]; });
+  priceBusy++;
   google.script.run
-    .withSuccessHandler(function (n) { setMsg('<span class="ok">✔ NPP / MRP saved in Product List for ' + n + ' product(s).</span>'); })
-    .withFailureHandler(function (e) { setMsg('<span class="err">NPP / MRP not saved: ' + esc(e.message) + '</span>'); })
+    .withSuccessHandler(function (n) { priceBusy--; setMsg('<span class="ok">✔ NPP / MRP saved in Product List (' + n + ' product' + (n === 1 ? '' : 's') + ').</span>'); priceDone(); })
+    .withFailureHandler(function (e) { priceBusy--; priceFailed = priceFailed.concat(ch); setMsg('<span class="err">NPP / MRP not saved yet: ' + esc(e.message) + ' - Download will try again.</span>'); priceDone(); })
     .lpSavePrices(ch);
 }
+function whenPricesSaved(fn) { if (!priceBusy) fn(); else priceWait.push(fn); }
+function priceDone() { if (priceBusy) return; var w = priceWait; priceWait = []; w.forEach(function (f) { f(); }); }
 
 // Red chips = must fix (Add stays off); amber chips = only a check, Add still works.
 function showChips(errs, warns) {
@@ -439,7 +497,7 @@ function showChips(errs, warns) {
 function priceWarns(list) {
   var out = [], t = TAX[$('tax').value] || 0;
   list.forEach(function (x) {
-    var n = Number(x.p.npp); if (!(n > 0) || !(x.ex > 0)) return;
+    var n = nppNow(x.p); if (!(n > 0) || !(x.ex > 0)) return;
     var c = x.ex * (1 + t / 100);
     if (c >= n) out.push(x.p.name + ': cost ' + f2(c) + ' (incl tax) is not below NPP ' + f2(n) + ' - no margin, check the rate or NPP');
   });
@@ -510,29 +568,38 @@ function billCheck() {
     '<span class="chip warn">⚠ list ' + f2(listInc) + ' is ' + f2(Math.abs(d)) + (d > 0 ? ' MORE' : ' LESS') + ' than the bill</span>';
 }
 function renderList() {
-  var lb = $('lb'); lb.innerHTML = '';
+  var lb = $('lb'), ae = document.activeElement, keep = null;
+  if (ae && ae.classList && ae.classList.contains('lpr')) keep = { c: ae.getAttribute('data-lc'), f: ae.getAttribute('data-f'), v: ae.value, cls: ae.className, s: ae.selectionStart, e: ae.selectionEnd, tr: Array.prototype.indexOf.call(lb.children, ae.closest('tr')) };
+  lb.innerHTML = '';
   var ex = 0, inc = 0;
   items.forEach(function (it, i) {
-    var ci = inclOf(it), g = it.packs * ci, e = g / (1 + it.t / 100);   // same as the sheet: C, I, N
+    var ci = inclOf(it), g = it.packs * ci, e = g / (1 + it.t / 100);   // same as the sheet: C, L, Q
     ex += e; inc += g;
-    var tr = document.createElement('tr');
+    var p = PBY[it.code], tr = document.createElement('tr');
+    var state = it.q ? '<span class="tag wait">saving…</span>' : it.done ? '<span class="tag" title="sheet row ' + (it.row || '') + '">in sheet</span>' : '';
+    var name = '<div>' + esc(p ? p.name : it.name) + ' ' + state + '</div><div class="sub">' + esc(it.code) + (it.exp ? ' · exp ' + esc(it.exp) : '') + '</div>';
+    var lp = function (f) {
+      if (!p) return '<span class="muted">–</span>';
+      return '<input type="text" class="lpr" data-lc="' + esc(it.code) + '" data-f="' + f + '" value="' + esc(p[f] === '' ? '' : p[f]) + '" placeholder="' + f.toUpperCase() + '">';
+    };
     if (i === editIdx) {
       tr.className = 'editing';
       var opts = Object.keys(TAX).map(function (k) { return '<option' + (k === it.tax ? ' selected' : '') + '>' + esc(k) + '</option>'; }).join('');
-      tr.innerHTML = '<td>' + esc(it.dd) + '</td><td class="n"><input type="text" class="ed" id="ePk" value="' + it.packs + '"></td><td class="n"><input type="text" class="ed" id="eCost" value="' + ci + '" title="Net Unit Cost INCLUDING tax"></td>' +
-        '<td><select id="eTax">' + opts + '</select></td><td colspan="3" class="muted" id="eErr"></td>' +
-        '<td style="white-space:nowrap"><button class="mini" data-save="' + i + '">✔ Save</button> <button class="sec mini" data-cancel="1">✕</button></td>';
+      tr.innerHTML = '<td>' + name + '</td><td class="n"><input type="text" class="ed" id="ePk" value="' + it.packs + '" style="width:56px"></td><td class="n"><input type="text" class="ed" id="eCost" value="' + ci + '" title="Net Unit Cost INCLUDING tax"></td>' +
+        '<td><select id="eTax" style="width:92px">' + opts + '</select></td><td colspan="5" class="muted" id="eErr">Enter = save · Esc = cancel</td>' +
+        '<td style="white-space:nowrap"><button class="mini" data-save="' + i + '">Save</button> <button class="icon" data-cancel="1">✕</button></td>';
     } else {
-      var act = it.q ? '…' : '<button class="sec mini" data-edit="' + i + '" title="Change packs / cost / tax">✎</button> ' +
-        (it.sure ? '<button class="mini" data-del="' + i + '">sure?</button>' : '<button class="sec mini" data-del="' + i + '" title="Remove' + (it.done ? ' (also from the sheet; lines below move up)' : '') + '">✕</button>');
-      tr.innerHTML = '<td>' + (it.done ? '<span class="ok" title="in the sheet">✔</span> ' : '') + esc(it.dd) + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(ci) + '</td><td>' + esc(it.tax) +
-        '</td><td class="n">' + f2(g) + '</td><td class="n">' + f2(e) + '</td><td class="muted">' + esc(it.exp || '') + '</td><td style="white-space:nowrap">' + act + '</td>';
+      var act = it.q ? '' : '<button class="icon" data-edit="' + i + '" title="Change packs / cost / tax">✎</button>' +
+        (it.sure ? '<button class="mini" style="background:#ff3b30" data-del="' + i + '">Sure?</button>' : '<button class="icon" data-del="' + i + '" title="Remove' + (it.done ? ' (also from the sheet; lines below move up)' : '') + '">✕</button>');
+      tr.innerHTML = '<td>' + name + '</td><td class="n">' + it.packs + '</td><td class="n">' + f2(ci) + '</td><td>' + esc(it.tax) +
+        '</td><td class="n">' + lp('npp') + '</td><td class="n">' + lp('mrp') + '</td><td class="n" data-mgi="' + i + '">' + (p ? marginHtml(nppNow(p), ci) : '') +
+        '</td><td class="n">' + f2(g) + '</td><td class="n">' + f2(e) + '</td><td style="white-space:nowrap;text-align:right">' + act + '</td>';
     }
     lb.appendChild(tr);
   });
   if (items.length) {
     var tr = document.createElement('tr'); tr.className = 'tot';
-    tr.innerHTML = '<td>Total (✔ = in the sheet)</td><td></td><td></td><td></td><td class="n">' + f2(inc) + '</td><td class="n">' + f2(ex) + '</td><td></td><td></td>';
+    tr.innerHTML = '<td>Total</td><td></td><td></td><td></td><td></td><td></td><td></td><td class="n">' + f2(inc) + '</td><td class="n">' + f2(ex) + '</td><td></td>';
     lb.appendChild(tr);
   }
   // GST breakup per tax code (taxable = total ex tax, tax split half CGST / half SGST)
@@ -562,6 +629,10 @@ function renderList() {
   $('put').disabled = !pend;
   $('put').textContent = pend ? 'Put ' + pend + ' line(s) in sheet' : 'Put in sheet';
   if (editIdx >= 0 && $('ePk')) { $('ePk').focus(); $('ePk').select(); }
+  else if (keep) {
+    var row = lb.children[keep.tr], inp = row && row.querySelector('input.lpr[data-lc="' + CSS.escape(keep.c) + '"][data-f="' + keep.f + '"]');
+    if (inp) { inp.value = keep.v; inp.className = keep.cls; inp.focus(); try { inp.setSelectionRange(keep.s, keep.e); } catch (x) {} }
+  }
   saveDraft();
 }
 
@@ -599,7 +670,15 @@ function delItem(i) {
     .lpClear(it.row, it.dd);
 }
 
-function setMsg(html) { $('msg').innerHTML = html; }
+// Messages show as a small toast at the bottom: ✔ messages fade after 4.5 s, errors after 12 s, "working…" stays until replaced.
+var msgT = null;
+function setMsg(html) {
+  var m = $('msg'); clearTimeout(msgT);
+  if (!html) { m.className = ''; return; }
+  m.innerHTML = html; m.className = 'show';
+  var ok = /class="ok"/.test(html) && !/class="err"/.test(html), bad = /class="err"|chip warn/.test(html);
+  if (ok || bad) msgT = setTimeout(function () { m.className = ''; }, ok ? 4500 : 12000);
+}
 
 // DRAFT: lines not yet in the sheet are kept (this browser at once + the user's Google account a moment later) and
 // come back the next time the window opens, so closing the window / reloading the page does not lose them.
@@ -655,7 +734,7 @@ $('clr').addEventListener('click', function () {
   var b = $('clr');
   if (writing || wq.length || items.some(function (x) { return x.q; })) { setMsg('<span class="err">Wait until the writing is finished.</span>'); return; }
   if (!clrSure) {
-    b.textContent = 'sure? list + sheet'; b.style.background = '#b3261e'; b.style.color = '#fff';
+    b.textContent = 'Sure? list + sheet'; b.style.background = '#ff3b30'; b.style.color = '#fff';
     clrSure = setTimeout(resetClr, 8000);
     return;
   }
@@ -665,7 +744,7 @@ $('clr').addEventListener('click', function () {
     .withFailureHandler(function (e) { b.disabled = false; setMsg('<span class="err">Not cleared: ' + esc(e.message) + '</span>'); })
     .lpClearAll();
 });
-function resetClr() { clearTimeout(clrSure); clrSure = null; var b = $('clr'); b.textContent = '🗑 Clear all lines'; b.style.background = ''; b.style.color = '#b3261e'; }
+function resetClr() { clearTimeout(clrSure); clrSure = null; var b = $('clr'); b.textContent = 'Clear all'; b.style.background = ''; b.style.color = ''; }
 
 // Writes go one after the other (each appends below the last line of the sheet), so fast clicks cannot overlap.
 var wq = [], writing = false;
@@ -710,18 +789,26 @@ function pcSaveFiles(files, box) {
   });
 }
 
+// Download: NPP / MRP changes are saved FIRST (the ones still on the way are waited for, the ones typed in the product boxes
+// and the ones that failed before go with the download and are saved by the server before it makes the files).
 function download() {
-  $('dl').disabled = true; setMsg('Making the files…'); $('dlbox').innerHTML = '';
-  google.script.run
-    .withSuccessHandler(function (r) {
-      $('dl').disabled = false;
-      if (r.problems) { setMsg('<span class="err">Fix first:</span> ' + esc(r.problems.slice(0, 8).join(' | '))); return; }
-      if (r.empty) { setMsg('<span class="err">The list is empty - add lines first.</span>'); return; }
-      setMsg('<span class="ok">✔ ' + r.count + ' line(s), ' + r.products + ' product(s) - downloading ' + r.files.length + ' files…</span>');
-      pcSaveFiles(r.files, $('dlbox'));
-    })
-    .withFailureHandler(function (e) { $('dl').disabled = false; setMsg('<span class="err">' + esc(e.message) + '</span>'); })
-    .lpDownload(items.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax, exp: it.exp || '' }; }));   // straight from this list (sheet not needed)
+  var ch = priceFailed.concat(priceChanges()); priceFailed = [];
+  ch.forEach(function (c) { var p = PBY[c.code]; if (p) { if (c.npp !== undefined) p.npp = c.npp; if (c.mrp !== undefined) p.mrp = c.mrp; } delete prices[c.code]; });
+  $('dl').disabled = true; $('dlbox').innerHTML = '';
+  setMsg(priceBusy ? 'Saving NPP / MRP first…' : 'Making the files…');
+  whenPricesSaved(function () {
+    setMsg(ch.length ? 'Saving ' + ch.length + ' NPP / MRP change(s), then making the files…' : 'Making the files…');
+    google.script.run
+      .withSuccessHandler(function (r) {
+        $('dl').disabled = false; renderList();
+        if (r.problems) { setMsg('<span class="err">Fix first:</span> ' + esc(r.problems.slice(0, 8).join(' | '))); return; }
+        if (r.empty) { setMsg('<span class="err">The list is empty - add lines first.</span>'); return; }
+        setMsg('<span class="ok">✔ ' + (ch.length ? 'NPP / MRP saved · ' : '') + r.count + ' line(s), ' + r.products + ' product(s) - downloading ' + r.files.length + ' files…</span>');
+        pcSaveFiles(r.files, $('dlbox'));
+      })
+      .withFailureHandler(function (e) { $('dl').disabled = false; priceFailed = priceFailed.concat(ch); setMsg('<span class="err">' + esc(e.message) + '</span>'); })
+      .lpDownload(items.map(function (it) { return { dd: it.dd, packs: it.packs, cost: it.cost, tax: it.tax, exp: it.exp || '' }; }), ch);   // straight from this list (sheet not needed)
+  });
 }
 
 // ---------- wiring ----------
@@ -748,6 +835,7 @@ function priceInput(e) {
   var p = P.filter(function (x) { return x.code === c; })[0];
   e.target.className = 'pr' + (p && pnum(e.target.value) !== (p[f] === '' ? null : Number(p[f])) ? ' chg' : '');
   if (pnum(e.target.value) === null && e.target.value.trim() !== '') e.target.className = 'pr chg';
+  recalc();
   return true;
 }
 $('pb').addEventListener('input', priceInput);
@@ -768,6 +856,7 @@ $('vb').addEventListener('input', function (e) {
     var p = P.filter(function (x) { return x.code === c; })[0];
     e.target.className = 'pr' + (p && pnum(e.target.value) !== (p[f] === '' ? null : Number(p[f])) ? ' chg' : '');
     if (pnum(e.target.value) === null && e.target.value.trim() !== '') e.target.className = 'pr chg';
+    recalc();
     return;
   } var c = e.target.getAttribute('data-c'); if (c) { kgs[c] = e.target.value; manualKg = true; recalc(); } });
 $('vb').addEventListener('click', function (e) {
@@ -784,7 +873,32 @@ $('lb').addEventListener('click', function (e) {
   else if (t.getAttribute('data-cancel')) { editIdx = -1; renderList(); }
   else if ((v = t.getAttribute('data-del')) !== null) delItem(Number(v));
 });
+// NPP / MRP typed in the list: margin follows while typing; leaving the box (or Enter) saves it in Product List
+function lprOrig(inp) { var p = PBY[inp.getAttribute('data-lc')], f = inp.getAttribute('data-f'); return p ? (p[f] === '' ? null : Number(p[f])) : null; }
+$('lb').addEventListener('input', function (e) {
+  var t = e.target; if (!t.classList.contains('lpr')) return;
+  var v = pnum(t.value), bad = v === null && t.value.trim() !== '';
+  t.className = 'lpr' + (bad ? ' bad' : (v !== lprOrig(t) && t.value.trim() !== '' ? ' chg' : ''));
+  if (t.getAttribute('data-f') !== 'npp') return;
+  var tr = t.closest('tr'), cell = tr && tr.querySelector('[data-mgi]'), it = cell && items[Number(cell.getAttribute('data-mgi'))];
+  if (it) cell.innerHTML = marginHtml(v !== null ? v : nppNow(PBY[it.code]), inclOf(it));
+});
+$('lb').addEventListener('change', function (e) {
+  var t = e.target; if (!t.classList.contains('lpr')) return;
+  var c = t.getAttribute('data-lc'), f = t.getAttribute('data-f'), v = pnum(t.value);
+  if (t.value.trim() === '') { renderList(); return; }   // emptied = keep the old value
+  if (v === null) { setMsg('<span class="err">' + f.toUpperCase() + ' must be a number.</span>'); return; }
+  if (v === lprOrig(t)) { t.className = 'lpr'; return; }
+  var ch = { code: c }; ch[f] = v;
+  savePrices([ch]); renderList(); recalc();
+});
 $('lb').addEventListener('keydown', function (e) {
+  var t = e.target;
+  if (t.classList && t.classList.contains('lpr')) {
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); t.blur(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); var o = lprOrig(t); t.value = o === null ? '' : o; t.className = 'lpr'; t.blur(); }
+    return;
+  }
   if (editIdx < 0) return;
   if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); saveEdit(editIdx); }
   else if (e.key === 'Escape') { editIdx = -1; renderList(); }
@@ -926,6 +1040,7 @@ $('q').addEventListener('blur', function () { if (mode === 'loose' && !$('qty').
 
 function init(d) {
   P = d.products.map(function (r) { return { code: r[0], name: r[1], npp: r[2], dd: r[3], mrp: r[4] === undefined ? '' : r[4], shelf: r[5] === undefined ? '' : r[5], up: String(r[1]).toUpperCase(), g: sizeOfName(r[1]), words: String(r[1]).toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean), base: stripSizes(r[1]).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim() }; });
+  P.forEach(function (p) { if (!PBY[p.code]) PBY[p.code] = p; });
   d.taxes.forEach(function (t) { TAX[t[0]] = t[1]; });
   var sel = $('tax'); sel.innerHTML = '<option value="">– choose –</option>';
   d.taxes.forEach(function (t) { var o = document.createElement('option'); o.value = t[0]; o.textContent = t[0] + '  (' + t[1] + '%)'; sel.appendChild(o); });

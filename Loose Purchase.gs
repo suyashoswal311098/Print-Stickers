@@ -93,7 +93,9 @@ function lpWrite(lines) {
 
 // "Download both files" in the window (user, 25 Oct: straight from the window list, no need to put it in the sheet first).
 // lines = the window list [{dd, packs, cost (ex tax), tax, exp}]; none → the sheet's lines (as the DOWNLOAD XLSX FILE button).
-function lpDownload(lines) {
+// prices = NPP / MRP changes typed in the window and not saved yet: saved FIRST, so the Products file carries them.
+function lpDownload(lines, prices) {
+  if (prices && prices.length) { lpSavePrices(prices); SpreadsheetApp.flush(); }
   if (!lines || !lines.length) return pcBuildFiles();
   const look = pcIndex_(), taxOk = pcTaxCodes_(), problems = [], rows = [];
   lines.forEach((l, i) => {
