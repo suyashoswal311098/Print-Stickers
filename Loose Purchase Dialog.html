@@ -94,8 +94,7 @@
     <div id="calc" class="calc muted">Type the rate, choose including / excluding tax and the tax code.</div>
     <div id="errs" style="min-height:44px;max-height:70px;overflow:auto"></div>
     <button id="add" class="go" disabled>＋ Add to list &nbsp;<span style="font-weight:normal;font-size:12px">(Enter)</span></button>
-    <div class="bar" style="margin:0"><label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label>
-    <label class="radio" style="margin:0" title="the cost per pack (before tax) is saved as the product's NPP in Product List - leave OFF when NPP is your selling price"><input type="checkbox" id="updNpp"> Update NPP from purchase</label></div>
+    <div class="bar" style="margin:0"><label class="radio" style="margin:0"><input type="checkbox" id="fast" checked> Fast: put in the sheet at once</label></div>
   </div>
 </div>
 
@@ -453,18 +452,6 @@ function expOf(p) {
   var two = function (n) { return (n < 10 ? '0' : '') + n; };
   return two(d.getMonth() + 1) + '/' + two(d.getDate()) + '/' + d.getFullYear();
 }
-// (6) the purchase cost per pack (before tax) becomes the product's NPP, unless you typed an NPP yourself
-function nppFromPurchase(ch, lines) {
-  if (!$('updNpp').checked) return ch;
-  lines.forEach(function (l) {
-    var c = ch.filter(function (x) { return x.code === l.code; })[0];
-    if (c && c.npp !== undefined) return;
-    var v = Math.round(l.cost * 100) / 100, p = P.filter(function (x) { return x.code === l.code; })[0];
-    if (!p || Number(p.npp) === v) return;
-    if (c) c.npp = v; else ch.push({ code: l.code, npp: v });
-  });
-  return ch;
-}
 // (5) same product already in the list (or in the sheet, ✔ line) → that line is UPDATED with the new packs / cost /
 // tax / expiry instead of adding a second line (user, 24 Oct: "if again write, update existing"). Returns the item
 // still to be written as a new line, or null.
@@ -487,7 +474,7 @@ function addToList() {
   if (!pl) return;
   if (mode === 'packed') {
     var one = { dd: pl.p.dd, code: pl.p.code, name: pl.p.name, packs: pl.packs, cost: round4(pl.ex), tax: pl.tax, t: pl.t, exp: expOf(pl.p), done: false, q: false };
-    savePrices(nppFromPurchase(priceChanges(), [one]));
+    savePrices(priceChanges());
     one = mergeOrAdd(one);
     psel = null; $('q').value = ''; $('qty').value = ''; $('rate').value = ''; if ($('apmcK').value === 'amt') $('apmc').value = '';
     renderVariants(); renderList();
@@ -501,7 +488,7 @@ function addToList() {
     var it = { dd: r.p.dd, code: r.p.code, name: r.p.name, packs: r.packs, cost: cost, tax: pl.tax, t: pl.t, exp: expOf(r.p), done: false, q: false };
     fresh.push(it);
   });
-  savePrices(nppFromPurchase(priceChanges(), fresh));
+  savePrices(priceChanges());
   fresh = fresh.map(mergeOrAdd).filter(Boolean);
   kgs = {}; manualKg = false; $('q').value = ''; $('qty').value = ''; $('rate').value = ''; if ($('apmcK').value === 'amt') $('apmc').value = '';   // keep rate unit, incl/excl, tax for the next product
   renderVariants(); renderList();
@@ -803,8 +790,7 @@ $('lb').addEventListener('keydown', function (e) {
   else if (e.key === 'Escape') { editIdx = -1; renderList(); }
 });
 try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } catch (e) {}
-try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; $('updNpp').checked = localStorage.getItem('lp_npp2') === '1'; } catch (e) {}
-$('updNpp').addEventListener('change', function () { try { localStorage.setItem('lp_npp2', $('updNpp').checked ? '1' : '0'); } catch (e) {} });
+try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; } catch (e) {}
 $('bill').addEventListener('input', billCheck);
 $('auto').addEventListener('change', function () { try { localStorage.setItem('lp_auto', $('auto').checked ? '1' : '0'); } catch (e) {} if ($('auto').checked) { manualKg = false; renderVariants(); } });
 $('fast').addEventListener('change', function () { try { localStorage.setItem('lp_fast', $('fast').checked ? '1' : '0'); } catch (e) {} });
