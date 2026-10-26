@@ -10,9 +10,11 @@
   label { display: flex; flex-direction: column; font-weight: bold; font-size: 11px; gap: 2px; color: #444; }
   input[type=text], select { font-size: 14px; padding: 5px 7px; border: 1px solid #aaa; border-radius: 4px; }
   input:focus, select:focus { outline: 2px solid #4a86c8; }
-  #top { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; background: #f1f5fb; border: 1px solid #c8d3e3; border-radius: 8px; padding: 8px; }
-  #q { width: 165px; } #qty { width: 66px; } #rate { width: 70px; } #unit { width: 92px; } #tax { width: 104px; }
-  .seg { display: flex; } .seg label { flex-direction: row; font-size: 13px; font-weight: bold; margin: 0; padding: 6px 8px; border: 1px solid #1f3d66; color: #1f3d66; cursor: pointer; background: #fff; }
+  #top { display: flex; gap: 4px; align-items: flex-end; flex-wrap: wrap; background: #f1f5fb; border: 1px solid #c8d3e3; border-radius: 8px; padding: 8px; }
+  #q { width: 128px; } #qty { width: 54px; } #rate { width: 58px; } #unit { width: 78px; } #tax { width: 88px; }
+  .xg { display: flex; flex-direction: column; gap: 2px; } .xl { font-size: 11px; font-weight: bold; color: #444; }
+  .xr { display: flex; } .xr input, .xr select { border-radius: 0; margin-left: -1px; } .xr input { width: 40px; border-radius: 4px 0 0 4px; margin-left: 0; } .xr select:last-child { border-radius: 0 4px 4px 0; width: 94px; } .xr select { padding: 5px 1px; font-size: 13px; } #apmcK { width: 46px; }
+  .seg { display: flex; } .seg label { flex-direction: row; font-size: 12px; font-weight: bold; margin: 0; padding: 6px 5px; border: 1px solid #1f3d66; color: #1f3d66; cursor: pointer; background: #fff; }
   .seg label:first-child { border-radius: 4px 0 0 4px; } .seg label:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
   .seg input { position: absolute; opacity: 0; width: 0; height: 0; } .seg label { position: relative; } .seg label.on { background: #1f3d66; color: #fff; }
   #main { display: flex; gap: 10px; min-height: 0; flex: none; height: 330px; }
@@ -66,7 +68,10 @@
   <label><span id="rateL">Rate</span> <input type="text" id="rate" placeholder="800" autocomplete="off"></label>
   <label id="unitL">Rate is <select id="unit"><option value="kg">per kg</option><option value="all">whole qty</option></select></label>
   <label>Tax code <select id="tax"></select></label>
-  <label title="Extra charge the supplier adds: APMC / market fee, freight, packing… Type a % of the rate, or an amount in rupees for this whole entry (all the quantity typed). BEFORE tax = GST is charged on it too (APMC). AFTER tax = added on top of the GST.">Extra <input type="text" id="apmc" placeholder="0" style="width:52px" autocomplete="off"><select id="apmcK"><option value="pct">%</option><option value="amt">₹ amount</option></select><select id="apmcW"><option value="before">before tax</option><option value="after">after tax</option></select></label>
+  <div class="xg" title="Extra charge the supplier adds (APMC / market fee, freight, packing…): a % of the rate, or rupees for this whole entry. BEFORE tax = GST is charged on it too (APMC). AFTER tax = added on top of the GST.">
+    <div class="xl">Extra charge</div>
+    <div class="xr"><input type="text" id="apmc" placeholder="0" autocomplete="off"><select id="apmcK" title="% of the rate, or ₹ amount for this whole entry"><option value="pct">%</option><option value="amt">₹</option></select><select id="apmcW"><option value="before">before tax</option><option value="after">after tax</option></select></div>
+  </div>
   <div><div class="muted" style="font-size:11px;font-weight:bold;color:#444">Rate…</div>
     <div class="seg" id="seg"><label id="sIncl"><input type="radio" name="inc" value="incl">INCLUDES tax</label><label id="sExcl"><input type="radio" name="inc" value="excl">EXCLUDES tax</label></div></div>
 </div>
