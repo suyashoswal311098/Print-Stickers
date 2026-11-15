@@ -157,10 +157,10 @@
     <div id="lempty" class="muted" style="padding:14px 2px">Nothing yet. Fill the top row (loose: kg per size; packed: boxes / pcs), then “Add to list” (or press Enter).</div>
   </div>
   <div class="bar" style="margin-top:8px">
-    <label class="radio" title="Freight / transport for the WHOLE bill (₹, as paid). Spread = shared over all lines in the list and added into their Cost / pack. Change the amount and press Spread again any time; 0 takes it out.">Freight ₹ <input type="text" id="frt" class="ed" style="width:70px" placeholder="whole bill" autocomplete="off"></label>
+    <label class="radio" title="Freight / transport for the WHOLE bill (₹, as paid): the total (660) or per box × boxes (220x3 = ₹220 per box, 3 boxes). Spread = shared over all lines in the list and added into their Cost / pack. Change the amount and press Spread again any time; 0 takes it out.">Freight ₹ <input type="text" id="frt" class="ed" style="width:70px" placeholder="660 or 220x3" autocomplete="off"></label><span id="frtEq" class="muted"></span>
     <select id="frtBy" title="how the freight is shared: by the value of each line, or by its weight (kg in the product name)"><option value="value">by value</option><option value="kg">by kg</option></select>
     <button id="frtGo" class="sec mini">Spread</button><span id="frtD"></span>
-    <label class="radio" title="the supplier bill total incl tax - only a check">Bill total <input type="text" id="bill" class="ed" style="width:100px" placeholder="incl tax"></label><span id="billD"></span>
+    <label class="radio" title="the supplier bill total incl tax - only a check">Bill ₹ <input type="text" id="bill" class="ed" style="width:84px" placeholder="incl tax"></label><span id="billD"></span>
     <span style="flex:1"></span>
     <span id="dlbox"></span>
     <button id="clr" class="danger" title="Empties the list here AND all purchase lines in the sheet (asks first)">Clear all</button>
@@ -637,9 +637,21 @@ function billCheck() {
 function frInclOf(it) { return (it.frEx || 0) * (1 + it.t / 100) * it.packs; }
 var frDone = null;   // amount last spread
 function lineKg(it) { var p = PBY[it.code]; return sizeOfName(p ? p.name : it.name) * it.packs / 1000; }
+// Freight box: "660" = total, "220x3" / "220*3" / "220 x 3 box" = ₹220 per box × 3 boxes. Empty = 0. NaN = not understood.
+function frAmt() {
+  var v = $('frt').value.replace(/,/g, '').trim().toUpperCase();
+  if (v === '') return 0;
+  var m = v.match(/^(\d*\.?\d+)\s*[X×*]\s*(\d+)\s*(B|BOX|BOXES|BAG|BAGS|CTN|CTNS|NOS?)?$/);
+  if (m) return Math.round(Number(m[1]) * Number(m[2]) * 100) / 100;
+  return isFinite(v) && Number(v) >= 0 ? Number(v) : NaN;
+}
+function frShow() {   // "= 660" next to the box when per-box is typed
+  var a = frAmt(), per = /[X×*]/i.test($('frt').value);
+  $('frtEq').textContent = per && !isNaN(a) ? '=' + Math.round(a * 100) / 100 : '';
+}
 function spreadFreight() {
-  var v = $('frt').value.replace(/,/g, '').trim(), amt = v === '' ? 0 : Number(v);
-  if (!isFinite(amt) || amt < 0) { setMsg('<span class="err">Freight: type the amount in ₹ (0 takes it out).</span>'); return; }
+  var amt = frAmt();
+  if (isNaN(amt)) { setMsg('<span class="err">Freight: type the total (660) or per box × boxes (220x3). 0 takes it out.</span>'); return; }
   if (!items.length) { setMsg('<span class="err">Add the purchase lines first, then spread the freight.</span>'); return; }
   if (items.some(function (x) { return x.q; })) { setMsg('Some lines are still saving - press Spread again in a moment.'); return; }
   var byKg = $('frtBy').value === 'kg';
@@ -679,10 +691,10 @@ function frCheck() {
   var box = $('frtD'), tot = 0;
   items.forEach(function (it) { tot += frInclOf(it); });
   if (!(tot > 0.005) && !(frDone > 0)) { box.innerHTML = ''; return; }
-  var want = numOf('frt');
+  var want = frAmt();
   if (isNaN(want)) want = 0;
   box.innerHTML = Math.abs(tot - want) < 0.5 ? '<span class="ok" title="freight inside the Cost / pack of the lines">✔ in cost</span>' :
-    '<span class="chip warn" title="lines were added / changed after Spread">⚠ ' + f2(tot) + ' in cost - press Spread</span>';
+    '<span class="chip warn" title="' + f2(tot) + ' is in the cost now - lines were added / changed after Spread">⚠ press Spread</span>';
 }
 function renderList() {
   var lb = $('lb'), ae = document.activeElement, keep = null;
@@ -1024,7 +1036,7 @@ try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } 
 try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; } catch (e) {}
 $('bill').addEventListener('input', billCheck);
 $('frtGo').addEventListener('click', spreadFreight);
-$('frt').addEventListener('input', frCheck);
+$('frt').addEventListener('input', function () { frShow(); frCheck(); });
 $('frt').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); spreadFreight(); } });
 $('frtBy').addEventListener('change', function () { try { localStorage.setItem('lp_frtBy', $('frtBy').value); } catch (e) {} });
 try { var fb = localStorage.getItem('lp_frtBy'); if (fb) $('frtBy').value = fb; } catch (e) {}
