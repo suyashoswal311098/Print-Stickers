@@ -111,7 +111,7 @@
   <label id="unitL">Rate is <select id="unit"><option value="kg">per kg</option><option value="all">whole qty</option></select></label>
   <label>Tax code <select id="tax"></select></label>
   <div class="xg" title="Extra charge the supplier adds (APMC / market fee, freight, packing…): a % of the rate, or rupees for this whole entry. BEFORE tax = GST is charged on it too (APMC). AFTER tax = added on top of the GST.">
-    <div class="cap">Extra charge</div>
+    <div class="cap">Extra / freight</div>
     <div class="xr"><input type="text" id="apmc" placeholder="0" autocomplete="off"><select id="apmcK" title="% of the rate, or ₹ amount for this whole entry"><option value="pct">%</option><option value="amt">₹</option></select><select id="apmcW"><option value="before">before tax</option><option value="after">after tax</option></select></div>
   </div>
   <div><div class="cap">Rate…</div>
@@ -157,6 +157,9 @@
     <div id="lempty" class="muted" style="padding:14px 2px">Nothing yet. Fill the top row (loose: kg per size; packed: boxes / pcs), then “Add to list” (or press Enter).</div>
   </div>
   <div class="bar" style="margin-top:8px">
+    <label class="radio" title="Freight / transport for the WHOLE bill (₹, as paid). Spread = shared over all lines in the list and added into their Cost / pack. Change the amount and press Spread again any time; 0 takes it out.">Freight ₹ <input type="text" id="frt" class="ed" style="width:70px" placeholder="whole bill" autocomplete="off"></label>
+    <select id="frtBy" title="how the freight is shared: by the value of each line, or by its weight (kg in the product name)"><option value="value">by value</option><option value="kg">by kg</option></select>
+    <button id="frtGo" class="sec mini">Spread</button><span id="frtD"></span>
     <label class="radio" title="the supplier bill total incl tax - only a check">Bill total <input type="text" id="bill" class="ed" style="width:100px" placeholder="incl tax"></label><span id="billD"></span>
     <span style="flex:1"></span>
     <span id="dlbox"></span>
@@ -578,7 +581,7 @@ function mergeOrAdd(it) {
   var same = items.filter(function (x) { return x.dd === it.dd && !x.q; })[0];
   if (!same) { items.push(it); return it; }
   var was = same.packs + ' packs @ ' + f2(inclOf(same));
-  var apply = function () { same.note = it.note || ''; same.packs = it.packs; same.cost = it.cost; same.tax = it.tax; same.t = it.t; same.exp = it.exp; };
+  var apply = function () { same.note = it.note || ''; same.frEx = 0; same.packs = it.packs; same.cost = it.cost; same.tax = it.tax; same.t = it.t; same.exp = it.exp; };
   if (!same.done) { apply(); setMsg('<span class="ok">↻ ' + esc(it.name) + ' was already in the list (' + was + ') - line updated.</span>'); return null; }
   same.q = true;
   google.script.run
@@ -629,6 +632,58 @@ function billCheck() {
   box.innerHTML = Math.abs(d) < 1 ? '<span class="ok">✔ matches the bill</span>' :
     '<span class="chip warn">⚠ list ' + f2(listInc) + ' is ' + f2(Math.abs(d)) + (d > 0 ? ' MORE' : ' LESS') + ' than the bill</span>';
 }
+// ---------- FREIGHT for the whole bill: shared over all lines, added into each line's cost per pack ----------
+// it.frEx = freight per pack inside it.cost (before-tax part, so cost incl tax rises by exactly the freight share).
+function frInclOf(it) { return (it.frEx || 0) * (1 + it.t / 100) * it.packs; }
+var frDone = null;   // amount last spread
+function lineKg(it) { var p = PBY[it.code]; return sizeOfName(p ? p.name : it.name) * it.packs / 1000; }
+function spreadFreight() {
+  var v = $('frt').value.replace(/,/g, '').trim(), amt = v === '' ? 0 : Number(v);
+  if (!isFinite(amt) || amt < 0) { setMsg('<span class="err">Freight: type the amount in ₹ (0 takes it out).</span>'); return; }
+  if (!items.length) { setMsg('<span class="err">Add the purchase lines first, then spread the freight.</span>'); return; }
+  if (items.some(function (x) { return x.q; })) { setMsg('Some lines are still saving - press Spread again in a moment.'); return; }
+  var byKg = $('frtBy').value === 'kg';
+  var w = items.map(function (it) { return byKg ? lineKg(it) : (it.cost - (it.frEx || 0)) * (1 + it.t / 100) * it.packs; });
+  if (byKg && w.some(function (x) { return !(x > 0); })) {
+    var no = items.filter(function (it, i) { return !(w[i] > 0); }).map(function (it) { return it.name; });
+    setMsg('<span class="err">By kg: no size (g / kg) in the name of ' + esc(no.slice(0, 3).join(', ')) + (no.length > 3 ? '…' : '') + ' - use “by value”.</span>'); return;
+  }
+  var W = w.reduce(function (a, b) { return a + b; }, 0);
+  if (!(W > 0)) { setMsg('<span class="err">The list has no value to share the freight over.</span>'); return; }
+  var upd = [];
+  items.forEach(function (it, i) {
+    var base = it.cost - (it.frEx || 0);
+    var nc = round4(base + amt * w[i] / W / (1 + it.t / 100) / it.packs);
+    if (Math.abs(nc - it.cost) > 1e-9) { it.cost = nc; if (it.done) upd.push(it); }
+    it.frEx = amt > 0 ? nc - base : 0;
+  });
+  frDone = amt;
+  renderList();
+  if (!upd.length) { setMsg('<span class="ok">✔ Freight ' + f2(amt) + ' is in the Cost / pack of ' + items.length + ' line(s).</span>'); return; }
+  setMsg('Updating ' + upd.length + ' sheet row(s) with the freight…');
+  var k = 0, fails = [];
+  (function next() {
+    if (k >= upd.length) {
+      renderList();
+      setMsg(fails.length ? '<span class="err">' + fails.length + ' sheet row(s) not updated (' + esc(fails[0]) + ') - press Spread again.</span>' : '<span class="ok">✔ Freight ' + f2(amt) + ' added into the Cost / pack (window + ' + upd.length + ' sheet row(s)).</span>');
+      return;
+    }
+    var it = upd[k++]; it.q = true;
+    google.script.run
+      .withSuccessHandler(function () { it.q = false; next(); })
+      .withFailureHandler(function (e) { it.q = false; fails.push(e.message); next(); })
+      .lpUpdate(it.row, it.dd, { packs: it.packs, cost: it.cost, tax: it.tax });
+  })();
+}
+function frCheck() {
+  var box = $('frtD'), tot = 0;
+  items.forEach(function (it) { tot += frInclOf(it); });
+  if (!(tot > 0.005) && !(frDone > 0)) { box.innerHTML = ''; return; }
+  var want = numOf('frt');
+  if (isNaN(want)) want = 0;
+  box.innerHTML = Math.abs(tot - want) < 0.5 ? '<span class="ok" title="freight inside the Cost / pack of the lines">✔ in cost</span>' :
+    '<span class="chip warn" title="lines were added / changed after Spread">⚠ ' + f2(tot) + ' in cost - press Spread</span>';
+}
 function renderList() {
   var lb = $('lb'), ae = document.activeElement, keep = null;
   if (ae && ae.classList && ae.classList.contains('lpr')) keep = { c: ae.getAttribute('data-lc'), f: ae.getAttribute('data-f'), v: ae.value, cls: ae.className, s: ae.selectionStart, e: ae.selectionEnd, tr: Array.prototype.indexOf.call(lb.children, ae.closest('tr')) };
@@ -639,7 +694,7 @@ function renderList() {
     ex += e; inc += g;
     var p = PBY[it.code], tr = document.createElement('tr');
     var state = it.q ? '<span class="tag wait">saving…</span>' : it.done ? '<span class="tag" title="sheet row ' + (it.row || '') + '">in sheet</span>' : '';
-    var name = '<div>' + esc(p ? p.name : it.name) + ' ' + state + '</div><div class="sub">' + esc(it.code) + (it.exp ? ' · exp ' + esc(it.exp) : '') + '</div>';
+    var name = '<div>' + esc(p ? p.name : it.name) + ' ' + state + '</div><div class="sub">' + esc(it.code) + (it.exp ? ' · exp ' + esc(it.exp) : '') + (it.frEx > 0 ? ' · freight ' + f2(it.frEx * (1 + it.t / 100)) + '/pack' : '') + '</div>';
     var lp = function (f) {
       if (!p) return '<span class="muted">–</span>';
       return '<input type="text" class="lpr" data-lc="' + esc(it.code) + '" data-f="' + f + '" value="' + esc(p[f] === '' ? '' : p[f]) + '" placeholder="' + f.toUpperCase() + '">';
@@ -683,7 +738,7 @@ function renderList() {
     if (gk.length > 1) h += '<tr class="tot"><td>Total</td><td class="n">' + f2(th) + '</td><td class="n">' + f2(tc) + '</td><td class="n">' + f2(tt - tc) + '</td><td class="n">' + f2(tt) + '</td></tr>';
     gt.innerHTML = h; gt.style.display = '';
   }
-  listInc = inc; billCheck();
+  listInc = inc; billCheck(); frCheck();
   $('lt').style.display = items.length ? '' : 'none';
   $('lempty').style.display = items.length ? 'none' : '';
   $('cnt').textContent = items.length ? '(' + items.length + ' line' + (items.length > 1 ? 's' : '') + ')' : '';
@@ -704,7 +759,7 @@ function saveEdit(i) {
   if (!(pk > 0) || Math.round(pk) !== pk) { $('eErr').innerHTML = '<span class="err">Packs: whole number above 0</span>'; return; }
   if (!(cost >= 0) || $('eCost').value.trim() === '') { $('eErr').innerHTML = '<span class="err">Cost: a number</span>'; return; }
   cost = cost / (1 + TAX[tax] / 100);   // typed = incl tax; the window keeps ex tax, the sheet gets incl again
-  var apply = function () { if (pk !== it.packs) it.note = ''; it.packs = pk; it.cost = cost; it.tax = tax; it.t = TAX[tax]; editIdx = -1; renderList(); };
+  var apply = function () { if (pk !== it.packs) it.note = ''; if (Math.abs(cost - it.cost) > 1e-6) it.frEx = 0; it.packs = pk; it.cost = cost; it.tax = tax; it.t = TAX[tax]; editIdx = -1; renderList(); };
   if (!it.done) { apply(); return; }
   it.q = true; setMsg('Updating the sheet…');
   google.script.run
@@ -747,7 +802,7 @@ function setMsg(html) {
 var draftReady = false, draftTimer = null, restored = null;
 function saveDraft() {
   if (!draftReady) return;   // not before the old draft was read
-  var lines = items.filter(function (x) { return !x.done; }).map(function (x) { return { dd: x.dd, code: x.code, name: x.name, packs: x.packs, cost: x.cost, tax: x.tax, t: x.t, exp: x.exp || '', note: x.note || '' }; });
+  var lines = items.filter(function (x) { return !x.done; }).map(function (x) { return { dd: x.dd, code: x.code, name: x.name, packs: x.packs, cost: x.cost, tax: x.tax, t: x.t, exp: x.exp || '', note: x.note || '', frEx: x.frEx || 0 }; });
   var json = lines.length ? JSON.stringify({ ts: Date.now(), lines: lines }) : '';
   try { if (json) localStorage.setItem('lp_draft', json); else localStorage.removeItem('lp_draft'); } catch (e) {}
   clearTimeout(draftTimer);
@@ -968,6 +1023,11 @@ $('lb').addEventListener('keydown', function (e) {
 try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } catch (e) {}
 try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; } catch (e) {}
 $('bill').addEventListener('input', billCheck);
+$('frtGo').addEventListener('click', spreadFreight);
+$('frt').addEventListener('input', frCheck);
+$('frt').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); spreadFreight(); } });
+$('frtBy').addEventListener('change', function () { try { localStorage.setItem('lp_frtBy', $('frtBy').value); } catch (e) {} });
+try { var fb = localStorage.getItem('lp_frtBy'); if (fb) $('frtBy').value = fb; } catch (e) {}
 $('auto').addEventListener('change', function () { try { localStorage.setItem('lp_auto', $('auto').checked ? '1' : '0'); } catch (e) {} if ($('auto').checked) { manualKg = false; renderVariants(); } });
 $('fast').addEventListener('change', function () { try { localStorage.setItem('lp_fast', $('fast').checked ? '1' : '0'); } catch (e) {} });
 $('add').addEventListener('click', addToList);
@@ -1125,7 +1185,7 @@ function init(d) {
   var sm = 'loose'; try { sm = localStorage.getItem('lp_mode') || 'loose'; } catch (e) {}
   setMode(sm);
   restored = readDraft(d.draft);
-  items = restored.map(function (l) { return { dd: l.dd, code: l.code, name: l.name, packs: l.packs, cost: l.cost, tax: l.tax, t: TAX[l.tax] !== undefined ? TAX[l.tax] : (l.t || 0), exp: l.exp, done: false, q: false, restored: true }; });
+  items = restored.map(function (l) { return { dd: l.dd, code: l.code, name: l.name, packs: l.packs, cost: l.cost, tax: l.tax, t: TAX[l.tax] !== undefined ? TAX[l.tax] : (l.t || 0), exp: l.exp, note: l.note || '', frEx: l.frEx || 0, done: false, q: false, restored: true }; });
   loadSheet();
 }
 if (window.google && google.script) {
