@@ -179,8 +179,17 @@
 var SIZE_RE = /(\d*\.?\d+)\s*(KILOGRAMS?|KILOS?|KGS?|GRAMS?|GRMS?|GMS?|G)(?![A-Z])/gi;
 function unitG(u) { return /^K/i.test(u) ? 1000 : 1; }
 // Sum of all sizes in a text ("10kg 500g" = 10500). Plain number only (qtyMode) = kg.
+// qtyMode (Quantity / kg boxes) also takes sums: 10kg+500g, 15kg-200g, 5x3kg, (10+5)kg… → calcNum in kg. 0 = nothing / not valid.
 function parseSum(text, qtyMode) {
   var s = String(text || ''), g = 0, found = false, m;
+  if (qtyMode && /[-+*\/÷()]|\d\s*[x×]|(^|[\s\d])[x×]\s*[\d.(]/i.test(s)) {
+    SIZE_RE.lastIndex = 0;
+    var t = s.replace(/,/g, '').replace(SIZE_RE, function (a, n, u) { return ' (' + (parseFloat(n) * unitG(u) / 1000) + ') '; });
+    t = t.replace(/\)\s*(KILOGRAMS?|KILOS?|KGS?)(?![A-Z])/gi, ')').replace(/\)\s*(GRAMS?|GRMS?|GMS?|G)(?![A-Z])/gi, ')/1000');   // (10+5)kg, (200+300)g
+    t = t.replace(/\)\s+(?=[\d.(])/g, ')+');   // "10kg 500g" written with spaces = sum
+    var kg = calcNum(t);
+    return kg > 0 ? Math.round(kg * 1e6) / 1e3 : 0;
+  }
   SIZE_RE.lastIndex = 0;
   while ((m = SIZE_RE.exec(s))) { g += parseFloat(m[1]) * unitG(m[2]); found = true; }
   if (!found && qtyMode && /^\s*(\d*\.?\d+)\s*$/.test(s)) { g = parseFloat(s) * 1000; found = true; }
@@ -262,7 +271,8 @@ function calcNum(text) {
 }
 function hasMath(text) { return /\d\s*[-+x×*\/÷]\s*[\d(]|\)/i.test(String(text || '')); }
 function numOf(id) { return calcNum($(id).value); }
-function qtyG() { return parseSum($('qty').value, true) || parseSum($('q').value, false); }
+// typed Quantity wins; only an EMPTY box falls back to a size typed in the product box (…walnut 40kg)
+function qtyG() { var t = $('qty').value.trim(); return t ? parseSum(t, true) : parseSum($('q').value, false); }
 
 var groups = [], selGroup = '', showAll = false;
 // A product matches when every typed word is the START of a word in its name (so "wa" finds Walnut, not Ajwa).
@@ -500,7 +510,7 @@ function recalc() {
   var left = Math.round((qKg - sumKg) * 1e6) / 1e6;
   var rem = $('rem');
   if (!cands.length) rem.textContent = '';
-  else if (!qG) rem.innerHTML = '<span class="err">Type the quantity bought (e.g. 10kg).</span>';
+  else if (!qG) rem.innerHTML = '<span class="err">' + ($('qty').value.trim() ? 'Quantity not understood (e.g. 10kg, 10kg+500g, 15kg-200g).' : 'Type the quantity bought (e.g. 10kg).') + '</span>';
   else if (left === 0) rem.innerHTML = '<span class="ok">✔ ' + qKg + ' kg fully split.</span>';
   else if (left > 0) rem.innerHTML = '<span class="err">' + sumKg + ' kg of ' + qKg + ' kg split - ' + left + ' kg left.</span>';
   else rem.innerHTML = '<span class="err">' + sumKg + ' kg is MORE than ' + qKg + ' kg (by ' + (-left) + ' kg).</span>';
@@ -508,7 +518,7 @@ function recalc() {
 
   if (!searchTokens($('q').value).length || !groups.length) errs.unshift('Choose a product');
   else if (!cands.length) errs.unshift('Click the product you bought');
-  if (!qG) errs.push('Quantity missing');
+  if (!qG) errs.push($('qty').value.trim() ? 'Quantity not understood' : 'Quantity missing');
   else if (cands.length && left !== 0) errs.push(left > 0 ? left + ' kg still to split' : 'split is more than the quantity');
   if (cands.length && !rows.length && qG) errs.push('Give kg to at least one size');
 
@@ -619,17 +629,22 @@ function expOf(p) {
 // (5) same product already in the list (or in the sheet, ✔ line) → that line is UPDATED with the new packs / cost /
 // tax / expiry instead of adding a second line (user, 24 Oct: "if again write, update existing"). Returns the item
 // still to be written as a new line, or null.
+// same product + same cost + same tax already in the list → the new packs are ADDED to that line (also in the sheet),
+// e.g. the same barcode scanned for a 2nd carton. Same product at another cost / tax → its own line (✎ / ✕ to fix).
 function mergeOrAdd(it) {
-  var same = items.filter(function (x) { return x.dd === it.dd && !x.q; })[0];
-  if (!same) { items.push(it); return it; }
-  var was = same.packs + ' packs @ ' + f2(inclOf(same));
-  var apply = function () { same.note = it.note || ''; same.frEx = 0; same.packs = it.packs; same.cost = it.cost; same.tax = it.tax; same.t = it.t; same.exp = it.exp; };
-  if (!same.done) { apply(); setMsg('<span class="ok">↻ ' + esc(it.name) + ' was already in the list (' + was + ') - line updated.</span>'); return null; }
+  var same = items.filter(function (x) { return x.dd === it.dd && x.tax === it.tax && !x.q && Math.abs((x.cost - (x.frEx || 0)) * (1 + x.t / 100) - it.cost * (1 + it.t / 100)) < 0.005; })[0];   // same cost incl tax to the paisa
+  if (!same) {
+    if (items.some(function (x) { return x.dd === it.dd; })) setMsg('<span class="err">⚠ ' + esc(it.name) + ' is already in the list at another cost / tax - added as its own line (✎ to change, ✕ to remove).</span>');
+    items.push(it); return it;
+  }
+  var total = same.packs + it.packs, was = same.packs;
+  var apply = function () { same.packs = total; same.note = ''; if (it.exp) same.exp = it.exp; };
+  if (!same.done) { apply(); setMsg('<span class="ok">+ ' + it.packs + ' added to ' + esc(it.name) + ' already in the list (' + was + ' → ' + total + ').</span>'); return null; }
   same.q = true;
   google.script.run
-    .withSuccessHandler(function () { same.q = false; apply(); renderList(); setMsg('<span class="ok">↻ ' + esc(it.name) + ': sheet row ' + same.row + ' updated (was ' + was + ').</span>'); })
-    .withFailureHandler(function (e) { same.q = false; renderList(); setMsg('<span class="err">' + esc(it.name) + ': sheet row ' + same.row + ' not updated (' + esc(e.message) + ') - try again or ↻ from sheet.</span>'); })
-    .lpUpdate(same.row, same.dd, { packs: it.packs, cost: it.cost, tax: it.tax, exp: it.exp || '' });
+    .withSuccessHandler(function () { same.q = false; apply(); renderList(); setMsg('<span class="ok">+ ' + it.packs + ' added to ' + esc(it.name) + ' (sheet row ' + same.row + ': ' + was + ' → ' + total + ').</span>'); })
+    .withFailureHandler(function (e) { same.q = false; renderList(); setMsg('<span class="err">' + esc(it.name) + ': sheet row ' + same.row + ' not updated (' + esc(e.message) + ') - add it again or ↻ from sheet.</span>'); })
+    .lpUpdate(same.row, same.dd, { packs: total, cost: same.cost, tax: same.tax, exp: it.exp || same.exp || '' });
   return null;
 }
 
@@ -1080,6 +1095,14 @@ $('frtGo').addEventListener('click', spreadFreight);
 var EQ_IDS = { rate: 1, apmc: 1, frt: 1, bill: 1, eCost: 1 };
 function eqBubble(e) {
   var el = e && e.target, box = $('eqf');
+  if (el && el.tagName === 'INPUT' && ((el.id === 'qty' && mode === 'loose') || el.classList.contains('kg'))) {   // loose qty / kg box with a sum
+    var b3 = $('eqf');
+    if (document.activeElement !== el || !/[-+*\/÷()]|\d\s*[x×]|(^|[\s\d])[x×]\s*[\d.(]/i.test(el.value) || el.readOnly) { b3.style.display = 'none'; return; }
+    var g3 = parseSum(el.value, true), r3 = el.getBoundingClientRect();
+    b3.className = g3 ? '' : 'bad'; b3.textContent = g3 ? '= ' + (Math.round(g3) / 1000) + ' kg' : 'not understood';
+    b3.style.display = 'block'; b3.style.left = r3.left + 'px'; b3.style.top = (r3.bottom + 3) + 'px';
+    return;
+  }
   if (el && el.id === 'qty' && mode === 'packed') {   // packed qty: show the pieces it comes to
     var bx = Number($('box').value) || 1, q = parsePcs(el.value, bx, quVal()), b2 = $('eqf');
     if (!q || document.activeElement !== el || !/[-+*\/÷()X×]|[A-Z]/i.test(el.value.replace(/^\s*\d+\s*$/, ''))) { b2.style.display = 'none'; return; }
