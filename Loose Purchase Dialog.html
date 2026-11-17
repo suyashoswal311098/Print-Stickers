@@ -97,6 +97,8 @@
   #msg .ok { color: #30d158; } #msg .err { color: #ff6961; } #msg .chip { margin: 0; }
   #dlbox a { color: var(--blue); font-size: 12px; }
   ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: #d1d1d6; border-radius: 8px; } ::-webkit-scrollbar-track { background: transparent; }
+  #eqf { position: fixed; z-index: 50; background: #1d1d1f; color: #fff; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; pointer-events: none; display: none; white-space: nowrap; }
+  #eqf.bad { background: #c62828; }
 </style>
 </head>
 <body>
@@ -157,7 +159,7 @@
     <div id="lempty" class="muted" style="padding:14px 2px">Nothing yet. Fill the top row (loose: kg per size; packed: boxes / pcs), then “Add to list” (or press Enter).</div>
   </div>
   <div class="bar" style="margin-top:8px">
-    <label class="radio" title="Freight / transport for the WHOLE bill (₹, as paid): the total (660) or per box × boxes (220x3 = ₹220 per box, 3 boxes). Spread = shared over all lines in the list and added into their Cost / pack. Change the amount and press Spread again any time; 0 takes it out.">Freight ₹ <input type="text" id="frt" class="ed" style="width:70px" placeholder="660 or 220x3" autocomplete="off"></label><span id="frtEq" class="muted"></span>
+    <label class="radio" title="Freight / transport for the WHOLE bill (₹, as paid): the total (660) or per box × boxes (220x3 = ₹220 per box, 3 boxes). Spread = shared over all lines in the list and added into their Cost / pack. Change the amount and press Spread again any time; 0 takes it out.">Freight ₹ <input type="text" id="frt" class="ed" style="width:70px" placeholder="220x3" autocomplete="off"></label><span id="frtEq" class="muted"></span>
     <select id="frtBy" title="how the freight is shared: by the value of each line, or by its weight (kg in the product name)"><option value="value">by value</option><option value="kg">by kg</option></select>
     <button id="frtGo" class="sec mini">Spread</button><span id="frtD"></span>
     <label class="radio" title="the supplier bill total incl tax - only a check">Bill ₹ <input type="text" id="bill" class="ed" style="width:84px" placeholder="incl tax"></label><span id="billD"></span>
@@ -168,6 +170,7 @@
     <button id="dl">⬇ Download both files</button>
   </div>
   <span id="msg"></span>
+  <div id="eqf"></div>
 </div>
 
 <script>
@@ -224,9 +227,41 @@ function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&
 function f2(x) { return (Math.round(x * 100) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 // "Extra" box (APMC, freight…): blank / invalid = none
-function extraOf() { var v = parseFloat(($('apmc').value || '').replace(/,/g, '')); return isFinite(v) && v > 0 ? { v: v, k: $('apmcK').value, w: $('apmcW').value } : null; }
+function extraOf() { var v = calcNum($('apmc').value); return isFinite(v) && v > 0 ? { v: v, k: $('apmcK').value, w: $('apmcW').value } : null; }
 function extraNote() { var x = extraOf(); return x ? ' · includes extra ' + (x.k === 'pct' ? x.v + '%' : '₹' + f2(x.v)) + ' ' + (x.w === 'after' ? 'after' : 'before') + ' tax' : ''; }
-function numOf(id) { var v = $(id).value.replace(/,/g, '').trim(); return v !== '' && isFinite(v) ? Number(v) : NaN; }
+// ---------- small calculator for the number boxes: 220x3, 220+180, 660-20, 1000/4, (220+180)x2 ----------
+// numbers, + - x × * / ÷ and brackets only (no eval). Empty -> NaN. Words like "box" / "bags" after a number are ignored.
+function calcNum(text) {
+  var t = String(text == null ? '' : text).replace(/,/g, '').replace(/₹|RS\.?|INR/gi, '')
+    .replace(/(\d)\s*(BOXES|BOX|BAGS|BAG|CTNS|CTN|NOS|NO|PCS|PC|KGS|KG)\b/gi, '$1').trim();
+  if (!t) return NaN;
+  var i = 0;
+  function sp() { while (t[i] === ' ') i++; }
+  function num() {
+    sp();
+    if (t[i] === '(') { i++; var v = expr(); sp(); if (t[i] !== ')') throw 0; i++; return v; }
+    if (t[i] === '-') { i++; return -num(); }
+    if (t[i] === '+') { i++; return num(); }
+    var m = /^\d*\.?\d+/.exec(t.slice(i)); if (!m) throw 0;
+    i += m[0].length; return Number(m[0]);
+  }
+  function term() {
+    var v = num();
+    for (;;) {
+      sp(); var c = t[i];
+      if (c === '*' || c === 'x' || c === 'X' || c === '×') { i++; v *= num(); }
+      else if (c === '/' || c === '÷') { i++; var d = num(); if (d === 0) throw 0; v /= d; }
+      else return v;
+    }
+  }
+  function expr() {
+    var v = term();
+    for (;;) { sp(); var c = t[i]; if (c === '+') { i++; v += term(); } else if (c === '-') { i++; v -= term(); } else return v; }
+  }
+  try { var r = expr(); sp(); if (i < t.length || !isFinite(r)) return NaN; return Math.round(r * 1e6) / 1e6; } catch (e) { return NaN; }
+}
+function hasMath(text) { return /\d\s*[-+x×*\/÷]\s*[\d(]|\)/i.test(String(text || '')); }
+function numOf(id) { return calcNum($(id).value); }
 function qtyG() { return parseSum($('qty').value, true) || parseSum($('q').value, false); }
 
 var groups = [], selGroup = '', showAll = false;
@@ -510,7 +545,7 @@ function priceCell(p, f) {
   var chg = typed !== null && pnum(typed) !== (p[f] === '' ? null : Number(p[f]));
   return '<td class="n"><input type="text" class="pr' + (chg ? ' chg' : '') + '" data-pr="' + f + '" data-pc="' + esc(p.code) + '" value="' + esc(v) + '" placeholder="' + f.toUpperCase() + '"></td>';
 }
-function pnum(v) { v = String(v).replace(/,/g, '').trim(); return v !== '' && isFinite(v) && Number(v) >= 0 ? Number(v) : null; }
+function pnum(v) { var n = calcNum(v); return n >= 0 ? n : null; }
 // NPP to use for the margin: the one typed in a box (not saved yet) or the Product List one
 function nppNow(p) { var t = prices[p.code] && prices[p.code].npp !== undefined ? pnum(prices[p.code].npp) : null; return t !== null ? t : (p.npp === '' ? NaN : Number(p.npp)); }
 // Margin = NPP − cost per pack incl tax, and % of NPP (same as the sheet's "Margin vs NPP")
@@ -639,14 +674,12 @@ var frDone = null;   // amount last spread
 function lineKg(it) { var p = PBY[it.code]; return sizeOfName(p ? p.name : it.name) * it.packs / 1000; }
 // Freight box: "660" = total, "220x3" / "220*3" / "220 x 3 box" = ₹220 per box × 3 boxes. Empty = 0. NaN = not understood.
 function frAmt() {
-  var v = $('frt').value.replace(/,/g, '').trim().toUpperCase();
-  if (v === '') return 0;
-  var m = v.match(/^(\d*\.?\d+)\s*[X×*]\s*(\d+)\s*(B|BOX|BOXES|BAG|BAGS|CTN|CTNS|NOS?)?$/);
-  if (m) return Math.round(Number(m[1]) * Number(m[2]) * 100) / 100;
-  return isFinite(v) && Number(v) >= 0 ? Number(v) : NaN;
+  if (!$('frt').value.trim()) return 0;
+  var v = calcNum($('frt').value);
+  return v >= 0 ? Math.round(v * 100) / 100 : NaN;
 }
 function frShow() {   // "= 660" next to the box when per-box is typed
-  var a = frAmt(), per = /[X×*]/i.test($('frt').value);
+  var a = frAmt(), per = hasMath($('frt').value);
   $('frtEq').textContent = per && !isNaN(a) ? '=' + Math.round(a * 100) / 100 : '';
 }
 function spreadFreight() {
@@ -767,7 +800,7 @@ function renderList() {
 
 function saveEdit(i) {
   var it = items[i]; if (!it) return;
-  var pk = Number($('ePk').value.replace(/,/g, '')), cost = Number($('eCost').value.replace(/,/g, '')), tax = $('eTax').value;
+  var pk = Number($('ePk').value.replace(/,/g, '')), cost = calcNum($('eCost').value), tax = $('eTax').value;
   if (!(pk > 0) || Math.round(pk) !== pk) { $('eErr').innerHTML = '<span class="err">Packs: whole number above 0</span>'; return; }
   if (!(cost >= 0) || $('eCost').value.trim() === '') { $('eErr').innerHTML = '<span class="err">Cost: a number</span>'; return; }
   cost = cost / (1 + TAX[tax] / 100);   // typed = incl tax; the window keeps ex tax, the sheet gets incl again
@@ -1036,6 +1069,22 @@ try { if (localStorage.getItem('lp_fast') === '0') $('fast').checked = false; } 
 try { $('auto').checked = localStorage.getItem('lp_auto') === '1'; } catch (e) {}
 $('bill').addEventListener('input', billCheck);
 $('frtGo').addEventListener('click', spreadFreight);
+// "= 660" bubble under the box you are typing in when it holds a sum (Rate, Extra, Freight, Bill, NPP / MRP, ✎ cost)
+var EQ_IDS = { rate: 1, apmc: 1, frt: 1, bill: 1, eCost: 1 };
+function eqBubble(e) {
+  var el = e && e.target, box = $('eqf');
+  var ok = el && el.tagName === 'INPUT' && (EQ_IDS[el.id] || /(^|\s)(pr|lpr)(\s|$)/.test(el.className)) && hasMath(el.value) && document.activeElement === el;
+  if (!ok) { box.style.display = 'none'; return; }
+  var v = calcNum(el.value), r = el.getBoundingClientRect();
+  box.className = isNaN(v) ? 'bad' : '';
+  box.textContent = isNaN(v) ? 'not a sum' : '= ' + (Math.round(v * 100) / 100).toLocaleString('en-IN');
+  box.style.display = 'block';
+  var top = r.bottom + 3; if (top + 24 > window.innerHeight) top = r.top - 24;
+  box.style.left = Math.max(4, Math.min(r.left, window.innerWidth - box.offsetWidth - 4)) + 'px'; box.style.top = top + 'px';
+}
+document.addEventListener('input', eqBubble, true);
+document.addEventListener('focusin', eqBubble, true);
+document.addEventListener('focusout', function () { $('eqf').style.display = 'none'; }, true);
 $('frt').addEventListener('input', function () { frShow(); frCheck(); });
 $('frt').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); spreadFreight(); } });
 $('frtBy').addEventListener('change', function () { try { localStorage.setItem('lp_frtBy', $('frtBy').value); } catch (e) {} });
