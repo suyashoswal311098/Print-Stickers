@@ -21,12 +21,18 @@
   .row .dup { flex: none; border: 1px solid #b39ddb; background: #fff; color: #6a1b9a; border-radius: 4px; padding: 1px 7px; font-size: 14px; font-weight: bold; cursor: pointer; }
   .row .dup:hover { background: #f3e5f5; }
   .row .again { font-size: 11px; color: #6a1b9a; background: #f3e5f5; border-radius: 3px; padding: 0 4px; text-transform: none; }
+  .row .pr { flex: none; font-size: 12px; color: #37474f; background: #eef3f6; border-radius: 4px; padding: 1px 6px; white-space: nowrap; text-transform: none; }
+  .row .pr b { color: #1f4e5f; }
+  .row .pr.none { color: #c62828; background: #fdecea; }
   .row .pl { flex: none; font-size: 11px; color: #90a4ae; margin-right: -4px; }
   .row input.pk { width: 58px; font-size: 13px; padding: 5px 4px; text-align: right; border: 1px solid #cfd8dc; border-radius: 4px; color: #455a64; }
   .row input.pk:focus { outline: 2px solid #6a1b9a; }
   .pkd { flex: none; display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: bold; color: #1f4e5f; }
   .pkd input { font-size: 14px; padding: 6px; border: 2px solid #1f4e5f; border-radius: 6px; }
   .row input.qty { width: 70px; font-size: 15px; padding: 5px 6px; text-align: right; border: 1px solid #b0bec5; border-radius: 4px; }
+  .row input.bad { background: #fdecea; border-color: #c62828; }
+  #eqf { position: fixed; z-index: 50; background: #1f2d3d; color: #fff; font-size: 12px; font-weight: bold; padding: 2px 8px; border-radius: 6px; pointer-events: none; display: none; white-space: nowrap; }
+  #eqf.bad { background: #c62828; }
   .row input.qty:focus { outline: 2px solid #6a1b9a; border-color: #6a1b9a; }
   .row .hd { flex: none; cursor: grab; color: #90a4ae; font-size: 18px; padding: 0 2px; touch-action: none; user-select: none; }
   .row .no { flex: none; width: 22px; text-align: right; color: #607d8b; font-size: 12px; }
@@ -55,13 +61,14 @@
 </style>
 </head>
 <body>
+<div id="eqf"></div>
 <div class="wrap">
   <div class="top">
     <label class="pkd">PKD <input type="date" id="pkd"></label>
     <input id="q" placeholder="Type to search, e.g. bold badam" autocomplete="off" autofocus>
     <button id="ordBtn" onclick="showOrder()" disabled title="See all ticked products and change their order">↕ Order</button>
   </div>
-  <div class="hint">Tick a product (qty 1) or type a qty. ＋ = same product again (e.g. another pack). Small box = packing size (default 1). Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
+  <div class="hint">Tick a product (qty 1) or type a qty (sums work: 10+12+2, 6x4). ＋ = same product again (e.g. another pack). Small box = packing size (default 1). Search again to add more — ticks are kept. Enter jumps to the next qty box. ↕ Order = see all ticked products and change their order.</div>
   <div class="list" id="list"><div class="empty"><span class="spin"></span>Loading products…</div></div>
   <div id="msg"></div>
   <div class="foot">
@@ -71,7 +78,7 @@
   </div>
 </div>
 <script>
-  var names = [], used = 0, limit = 240, loaded = false;
+  var names = [], info = {}, used = 0, limit = 240, loaded = false;
   (function () { var d = new Date(), p = function (x) { return (x < 10 ? '0' : '') + x; };
     document.getElementById('pkd').value = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); })();
   // Cursor in the search box straight away (you can type while products load)
@@ -97,11 +104,52 @@
   }
   var busy = false;
 
+  // small calculator for the Qty / Pack boxes: 10+12+2, 6x4, 30-2, (5+5)x3, 100/4 (no eval). NaN = not valid.
+  function calcNum(text) {
+    var t = String(text == null ? '' : text).replace(/,/g, '').trim(), i = 0;
+    if (!t) return NaN;
+    function sp() { while (t[i] === ' ') i++; }
+    function num() {
+      sp();
+      if (t[i] === '(') { i++; var v = expr(); sp(); if (t[i] !== ')') throw 0; i++; return v; }
+      if (t[i] === '-') { i++; return -num(); }
+      if (t[i] === '+') { i++; return num(); }
+      var m = /^\d*\.?\d+/.exec(t.slice(i)); if (!m) throw 0;
+      i += m[0].length; return Number(m[0]);
+    }
+    function term() {
+      var v = num();
+      for (;;) {
+        sp(); var c = t[i];
+        if (c === '*' || c === 'x' || c === 'X' || c === '×') { i++; v *= num(); }
+        else if (c === '/' || c === '÷') { i++; var d = num(); if (d === 0) throw 0; v /= d; }
+        else return v;
+      }
+    }
+    function expr() {
+      var v = term();
+      for (;;) { sp(); var c = t[i]; if (c === '+') { i++; v += term(); } else if (c === '-') { i++; v -= term(); } else return v; }
+    }
+    try { var r = expr(); sp(); if (i < t.length || !isFinite(r)) return NaN; return Math.round(r * 1e6) / 1e6; } catch (e) { return NaN; }
+  }
+  function hasMath(t) { return /\d\s*[-+x×*\/÷]|[()]/i.test(String(t || '')); }
+  // "= 24" bubble under the Qty / Pack box while it holds a sum
+  function eqBubble(el) {
+    var b = document.getElementById('eqf');
+    if (!el || !el.classList || !(el.classList.contains('qty') || el.classList.contains('pk')) || document.activeElement !== el || !hasMath(el.value)) { b.style.display = 'none'; return; }
+    var v = calcNum(el.value), isQ = el.classList.contains('qty'), ok = isQ ? (v > 0 && Math.round(v) === v) : v > 0;
+    b.className = ok ? '' : 'bad';
+    b.textContent = ok ? '= ' + v : (isQ && v > 0 ? 'whole number only' : 'not a sum');
+    var r = el.getBoundingClientRect();
+    b.style.display = 'block'; b.style.top = (r.bottom + 3) + 'px';
+    b.style.left = Math.max(4, Math.min(r.left, window.innerWidth - b.offsetWidth - 4)) + 'px';
+  }
+
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 
   google.script.run
     .withSuccessHandler(function (r) {
-      names = r.names || []; used = r.used || 0; limit = r.limit || 240;
+      names = r.names || []; info = r.info || {}; used = r.used || 0; limit = r.limit || 240;
       var q = document.getElementById('q');
       loaded = true; focusQ();
       render();
@@ -121,6 +169,15 @@
     return out;
   }
 
+  // NPP (and MRP) of the product from Product List, so you know what it is before ticking
+  function money(v) { return Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+  function priceTag(n) {
+    var p = info[n];
+    if (!p) return '';
+    if (p[0] === '' && p[1] === '') return '<span class="pr none" title="No NPP / MRP in Product List">no NPP</span>';
+    return '<span class="pr" title="From Product List">NPP <b>' + (p[0] === '' ? '–' : money(p[0])) + '</b>' + (p[1] === '' ? '' : ' · MRP ' + money(p[1])) + '</span>';
+  }
+
   function rowHtml(n, id, i, ord) {
     var on = !!id, L = on ? lines[id] : null;
     var last = order.length - 1;
@@ -129,9 +186,10 @@
       (ord ? '<span class="hd" title="Drag to change the order">⠿</span><span class="no">' + (i + 1) + '</span>' : '') +
       '<input type="checkbox"' + (on ? ' checked' : '') + ' tabindex="-1">' +
       '<span class="nm">' + esc(n) + (dupNo > 0 ? ' <span class="again">again</span>' : '') + '</span>' +
+      priceTag(n) +
       (on ? '<button class="dup" tabindex="-1" title="Add this product again (e.g. another pack size)">＋</button>' : '') +
-      '<span class="pl">Pack</span><input class="pk" type="number" min="0" step="0.25" inputmode="decimal" title="Packing size" value="' + (on ? L.pack : (draftPack[n] || 1)) + '">' +
-      '<span class="pl">Qty</span><input class="qty" type="number" min="1" step="1" inputmode="numeric" title="Sticker qty" value="' + (on ? L.qty : '') + '">' +
+      '<span class="pl">Pack</span><input class="pk" type="text" autocomplete="off" title="Packing size (sums work: 0.5+0.25)" value="' + (on ? L.pack : (draftPack[n] || 1)) + '">' +
+      '<span class="pl">Qty</span><input class="qty" type="text" autocomplete="off" title="Sticker qty (sums work: 10+12+2, 6x4, 30-2)" value="' + (on ? L.qty : '') + '">' +
       (ord ? '<button class="mv" data-d="-1" tabindex="-1"' + (i === 0 ? ' disabled' : '') + ' title="Move up">↑</button>' +
              '<button class="mv" data-d="1" tabindex="-1"' + (i === last ? ' disabled' : '') + ' title="Move down">↓</button>' : '') +
       '</div>';
@@ -177,7 +235,11 @@
 
   // Typing a qty: ticks the row (new line) or changes it; clearing it unticks (row stays until redraw)
   function setQty(row, v) {
-    var qty = parseInt(v, 10), id = row.getAttribute('data-id'), n = row.getAttribute('data-n');
+    var t = String(v).trim(), qty = calcNum(t), id = row.getAttribute('data-id'), n = row.getAttribute('data-n');
+    var box = row.querySelector('input.qty');
+    var bad = t !== '' && !(qty === 0) && !(qty > 0 && Math.round(qty) === qty);   // half-typed sum / fraction / negative
+    if (box) box.classList.toggle('bad', bad);
+    if (bad) return;                                  // keep the line as it is until the sum makes sense
     if (qty > 0) {
       if (!id) { id = addLine(n, qty, draftPack[n] || 1); row.setAttribute('data-id', id); }
       else lines[id].qty = qty;
@@ -225,14 +287,27 @@
   listEl.addEventListener('input', function (e) {
     var row = e.target.closest('.row');
     if (e.target.classList.contains('pk')) {
-      var pv = parseFloat(e.target.value), pid = row.getAttribute('data-id');
+      var pt = e.target.value.trim(), pv = calcNum(pt), pid = row.getAttribute('data-id');
+      e.target.classList.toggle('bad', pt !== '' && !(pv > 0));
+      eqBubble(e.target);
+      if (pt !== '' && !(pv > 0)) return;              // half-typed: keep the old pack
       if (pid) lines[pid].pack = pv > 0 ? pv : 1; else draftPack[row.getAttribute('data-n')] = pv > 0 ? pv : 1;
       return;
     }
     if (!e.target.classList.contains('qty')) return;
     setQty(row, e.target.value);
+    eqBubble(e.target);
     renumber();
   });
+  // leaving a box with a sum: show the result in the box (10+12+2 → 24)
+  listEl.addEventListener('focusout', function (e) {
+    document.getElementById('eqf').style.display = 'none';
+    var el = e.target; if (!el.classList || !(el.classList.contains('qty') || el.classList.contains('pk')) || !hasMath(el.value)) return;
+    var v = calcNum(el.value);
+    if (el.classList.contains('qty') ? (v > 0 && Math.round(v) === v) : v > 0) { el.value = String(v); el.classList.remove('bad'); }
+  });
+  listEl.addEventListener('focusin', function (e) { eqBubble(e.target); });
+  listEl.addEventListener('scroll', function () { document.getElementById('eqf').style.display = 'none'; });
   listEl.addEventListener('click', function (e) {
     var row = e.target.closest('.row');
     if (noClick || !row || e.target.classList.contains('qty') || e.target.classList.contains('pk') || e.target.classList.contains('hd')) return;
@@ -266,6 +341,7 @@
     var i = boxes.indexOf(e.target);
     if (e.key === 'Enter' || e.key === 'ArrowDown') {
       e.preventDefault();
+      if (e.target.classList.contains('bad')) return;   // fix the sum first
       if (boxes[i + 1]) { boxes[i + 1].focus(); boxes[i + 1].select(); }
       else document.getElementById('q').focus();
     } else if (e.key === 'ArrowUp') {
@@ -392,6 +468,8 @@
 
   function submitAll() {
     if (busy || !order.length) return;
+    var badBox = document.querySelector('#list input.bad');
+    if (badBox) { showMsg('A red Qty / Pack box is not a whole number or finished sum - fix it first.', 'err'); badBox.focus(); return; }
     var names = order.map(function (id) { return lines[id].n; });
     var items = order.map(function (id) { return { name: lines[id].n, qty: lines[id].qty, pack: lines[id].pack }; });
     var pkdVal = document.getElementById('pkd').value;

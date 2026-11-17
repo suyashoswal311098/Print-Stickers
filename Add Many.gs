@@ -16,7 +16,7 @@ function amProductIndex_(list) {
   const byName = {}, byBar = {};
   pl.forEach((r, i) => {
     const k = normName_(r[2]), bk = normBar_(r[1]);
-    const v = { bar: r[1], colour: r[7], shelf: Number(r[6]) || 0, name: k, row: i + 2 };
+    const v = { bar: r[1], colour: r[7], shelf: Number(r[6]) || 0, name: k, row: i + 2, npp: r[4], mrp: r[5] };
     if (k && !byName[k]) byName[k] = v;
     if (bk && !byBar[bk]) byBar[bk] = v;
   });
@@ -31,7 +31,7 @@ function amProductIndex_(list) {
 
 function openAddMany() {
   const html = HtmlService.createHtmlOutputFromFile('Add Many Dialog')
-    .setWidth(560)
+    .setWidth(680)
     .setHeight(640);
   SpreadsheetApp.getUi().showModalDialog(html, 'Add many stickers');
 }
@@ -57,13 +57,21 @@ function amGetProducts() {
     return true;
   });
   // Show products in Product List order (the order saved by Submit), unknown ones last
+  const info = {};
   try {
     const lookup = amProductIndex_(SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Product List'));
     const pos = {};
     names.forEach((nm, i) => { const p = lookup(nm); pos[nm] = p ? p.row : 1e9 + i; });
     names.sort((a, b) => pos[a] - pos[b]);
+    // NPP / MRP shown next to each product in the window: info[name] = [npp, mrp] ('' = empty in Product List)
+    names.forEach(nm => {
+      const p = lookup(nm);
+      if (!p) return;
+      const num = v => (v === '' || v === null || !isFinite(Number(v))) ? '' : Number(v);
+      info[nm] = [num(p.npp), num(p.mrp)];
+    });
   } catch (err) { console.warn('Add many: sort by Product List failed: ' + err.message); }
-  return { names: names, used: Number(work.getRange('C5').getValue()) || 0, limit: 240 };
+  return { names: names, info: info, used: Number(work.getRange('C5').getValue()) || 0, limit: 240 };
 }
 
 // items = [{name, qty, pack}], opts = {pkd: 'yyyy-mm-dd'} → inserts each like the INSERT button.
