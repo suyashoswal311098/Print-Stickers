@@ -331,8 +331,14 @@ function parsePcs(text, box, def) {
   if (!t) return null;
   var m = t.match(/^(\d+)\s*[X×*]\s*(\d+)\s*(PCS?)?$/);
   if (m) return { boxes: +m[1], loose: 0, box: +m[2], pcs: +m[1] * +m[2] };
-  var boxes = 0, loose = 0, rest = t.replace(/(\d*\.?\d+)\s*([A-Z]*)/g, function (all, n, w) {
-    n = Number(n);
+  if (!/[A-WYZ]/.test(t) && /[*\/÷()]|\d\s*X\s*\d.*[-+X]|[-+X].*\d\s*X\s*\d/.test(t)) {   // a sum with x / ÷ / brackets, no words: counted in the boxes/pcs choice
+    var v = calcNum(t);
+    if (isNaN(v)) return { bad: true };
+    if (Math.round(v) !== v || v < 0) return { bad: true, frac: true };
+    return def === 'box' ? { boxes: v, loose: 0, box: 0, pcs: v * box } : { boxes: 0, loose: v, box: 0, pcs: v };
+  }
+  var boxes = 0, loose = 0, rest = t.replace(/([-+]?)\s*(\d*\.?\d+)\s*([A-Z]*)/g, function (all, sg, n, w) {
+    n = Number(n) * (sg === '-' ? -1 : 1);
     if (BOX_W.test(w) || (!w && def === 'box')) boxes += n;
     else if (PC_W.test(w) || !w) loose += n;
     else return all;   // unknown word -> stays -> not valid
@@ -340,13 +346,14 @@ function parsePcs(text, box, def) {
   });
   if (rest.replace(/[\s+&]|AND/g, '')) return { bad: true };
   if (Math.round(boxes) !== boxes || Math.round(loose) !== loose) return { bad: true, frac: true };
+  if (boxes * box + loose < 0) return { bad: true };
   return { boxes: boxes, loose: loose, box: 0, pcs: boxes * box + loose };
 }
 function qtyText(boxes, loose, box) {
   var a = [];
   if (boxes) a.push(boxes + ' box' + (boxes > 1 ? 'es' : '') + (box > 1 ? ' × ' + box : ''));
-  if (loose) a.push(loose + ' pc' + (loose > 1 ? 's' : ''));
-  return a.join(' + ');
+  if (loose) a.push(Math.abs(loose) + ' pc' + (Math.abs(loose) > 1 ? 's' : ''));
+  return a.join(loose < 0 ? ' − ' : ' + ');
 }
 function boxMem() { try { return JSON.parse(localStorage.getItem('lp_box') || '{}') || {}; } catch (e) { return {}; } }
 function boxSave(code, n) { try { var m = boxMem(); if (n > 1) m[code] = n; else delete m[code]; localStorage.setItem('lp_box', JSON.stringify(m)); } catch (e) {} }
@@ -1073,6 +1080,14 @@ $('frtGo').addEventListener('click', spreadFreight);
 var EQ_IDS = { rate: 1, apmc: 1, frt: 1, bill: 1, eCost: 1 };
 function eqBubble(e) {
   var el = e && e.target, box = $('eqf');
+  if (el && el.id === 'qty' && mode === 'packed') {   // packed qty: show the pieces it comes to
+    var bx = Number($('box').value) || 1, q = parsePcs(el.value, bx, quVal()), b2 = $('eqf');
+    if (!q || document.activeElement !== el || !/[-+*\/÷()X×]|[A-Z]/i.test(el.value.replace(/^\s*\d+\s*$/, ''))) { b2.style.display = 'none'; return; }
+    var rr = el.getBoundingClientRect();
+    b2.className = q.bad ? 'bad' : ''; b2.textContent = q.bad ? 'not understood' : '= ' + q.pcs + ' pcs';
+    b2.style.display = 'block'; b2.style.left = rr.left + 'px'; b2.style.top = (rr.bottom + 3) + 'px';
+    return;
+  }
   var ok = el && el.tagName === 'INPUT' && (EQ_IDS[el.id] || /(^|\s)(pr|lpr)(\s|$)/.test(el.className)) && hasMath(el.value) && document.activeElement === el;
   if (!ok) { box.style.display = 'none'; return; }
   var v = calcNum(el.value), r = el.getBoundingClientRect();
